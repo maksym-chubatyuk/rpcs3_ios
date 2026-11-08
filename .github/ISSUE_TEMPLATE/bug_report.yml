@@ -35,9 +35,9 @@ body:
     attributes:
       label: How the app was installed, and how JIT is enabled
       options:
+        - iloader, JIT from the app (LocalDevVPN)
         - SideStore, JIT from the app (LocalDevVPN)
-        - AltStore, JIT from the app (LocalDevVPN)
-        - Sideloadly, JIT from the app (LocalDevVPN)
+        - AltStore or Sideloadly, JIT from the app (LocalDevVPN)
         - JIT from StikDebug
         - Other (say below)
     validations:

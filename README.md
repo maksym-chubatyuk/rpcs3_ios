@@ -8,17 +8,26 @@ that itself (below), or StikDebug can, or a Mac during development (`scripts/run
 
 ## Installing
 
+You need a computer (Windows, macOS or Linux) once, with [iloader](https://github.com/nab138/iloader),
+and [LocalDevVPN](https://apps.apple.com/app/localdevvpn/id6755608044) from the App Store on the iPhone.
+
 1. Download `RPCS3-<version>.ipa` from [Releases](https://github.com/maksym-chubatyuk/rpcs3_ios/releases).
-2. Install it with a sideloading tool that signs apps with your Apple ID, such as SideStore,
-   AltStore or Sideloadly. A free Apple ID works; apps signed with one have to be refreshed every
-   7 days.
-3. Enable JIT, which every launch needs (below).
-4. Install the PS3 firmware: download `PS3UPDAT.PUP` from
+2. Connect the iPhone to the computer with a cable, open iloader, sign in with your Apple ID and
+   import the IPA. A free Apple ID works; apps signed with one have to be installed again every
+   7 days. If iOS asks, turn on Developer Mode (Settings › Privacy & Security).
+3. In iloader, make the iPhone's pairing file and save it, then get it onto the phone (AirDrop,
+   iCloud Drive) and in RPCS3 tap **Import Pairing File…**. The app keeps it; this is needed once.
+4. Connect LocalDevVPN and open RPCS3: it enables JIT by itself. The first time, it downloads the
+   Developer Disk Image, which takes a while. Every launch needs JIT, so connect LocalDevVPN first.
+5. Install the PS3 firmware: download `PS3UPDAT.PUP` from
    [PlayStation's PS3 system software page](https://www.playstation.com/support/hardware/ps3/system-software/),
    then tap **Choose PS3UPDAT.PUP in Files…** in the app.
-5. Add your games with **+**: a game folder (with `PS3_GAME` or `USRDIR` in it) or an ISO, from
+6. Add your games with **+**: a game folder (with `PS3_GAME` or `USRDIR` in it) or an ISO, from
    anywhere the Files app reaches, or install PKG files with their `.rap` licences
    (**+ › Install Packages**). Dump games from your own console; this project provides none.
+
+Other sideloading tools (SideStore, AltStore, Sideloadly) install the IPA too; the pairing file then
+comes from their own pairing tool.
 
 Needs iOS 26 or later. Developed and tested on an iPhone 16 Pro Max (A18 Pro, 8 GB); phones with
 less memory may not run larger games. How well a game runs follows
@@ -32,7 +41,8 @@ RPCS3's own tracker.
 
 1. Get this iPhone's pairing file (a `.plist` made by iloader, or the pairing tool StikDebug's
    guide uses) onto the phone, and in RPCS3 tap **Import Pairing File…**. It is kept in the
-   Keychain. A file copied into the app's folder as `pairingFile.plist` is picked up too.
+   Keychain. A file placed in the app's Documents folder as `pairingFile.plist` (where iloader
+   places it for the apps it knows) is picked up too.
 2. Connect LocalDevVPN. It works on Wi-Fi or
    with no network, but not over cellular data.
 3. Open RPCS3. It enables JIT by itself at launch, or tap **Enable JIT**. The first time, the
