@@ -69,8 +69,10 @@ The layer touches RPCS3 from outside wherever it can:
 - The bridge fixes settings at run time instead of RPCS3's defaults: audio through FAudio, the
   shader recompiler without the interpreter, the on-screen controller as player 1, and the bundled
   overlay icons.
-- Tables the app shows (the home menu texts) are generated from RPCS3's Qt sources by
-  `scripts/gen-ios-strings.py`, never edited there.
+- What the app shows from RPCS3's desktop frontend is generated from its Qt sources, never edited
+  there: the home menu texts (`scripts/gen-ios-strings.py`) and the settings layout, with desktop's
+  tabs, groups, labels and descriptions (`scripts/gen-settings-layout.py`). The settings' values,
+  choices and ranges come from RPCS3's configuration at run time (`core/settings.cpp`).
 
 What cannot be done from outside is in `patches/`. Each patch starts with a note on what it does.
 Patches marked "Candidate for upstream" fix things that are not specific to this port; once RPCS3
@@ -93,6 +95,14 @@ scripts/run.sh                 # builds the app, installs it on the connected iP
 
 Put the PS3 firmware (`PS3UPDAT.PUP`, from Sony) and your own game dumps on the phone: install the
 firmware from the app, and copy game folders or ISOs into the app's `Games` folder in the Files app.
+
+## Settings
+
+The gear in the library opens the global settings, organised like RPCS3's desktop settings dialog,
+with search. Swipe a game to the right (or long-press it) for that game's own settings: each one
+follows the global settings until it is changed for that game, and can be set back to follow them.
+They are RPCS3's custom configs (`custom_configs/config_<title ID>.yml`), holding only what the game
+changes.
 
 ## Updating RPCS3
 

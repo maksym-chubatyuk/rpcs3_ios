@@ -19,4 +19,5 @@ echo "rpcs3 is now at $(git -C "$RPCS3" log -1 --format='%h %s')"
 
 "$ROOT/scripts/apply-patches.sh"
 python3 -I "$ROOT/scripts/gen-ios-strings.py"
+python3 -I "$ROOT/scripts/gen-settings-layout.py"
 "$ROOT/scripts/build-core-ios.sh"

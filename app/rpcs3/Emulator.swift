@@ -224,10 +224,33 @@ final class Emulator {
 
     // MARK: Test hook
 
+    /// For scripts/run.sh SETTINGS_SELFTEST=<title ID>: reads every setting, gives the game its own
+    /// value for one, checks it, then lets it follow the global settings again. Results in the app log.
+    private func settingsSelfTest(game: String) {
+        let path = ["Video", "Frame limit"]
+        let global = SettingsStore()
+        let shown = SettingsLayout.shared.tabs.flatMap { $0.groups.flatMap(\.items) }.filter { global.setting($0.path) != nil }.count
+        log("settings test: \(global.settings.count) settings, \(shown) of them in \(SettingsLayout.shared.tabs.count) tabs, \(global.otherSettings.count) under Other")
+        guard let globalLimit = global.setting(path) else { log("settings test: no \(path)"); return }
+
+        let store = SettingsStore(gameID: game)
+        guard let before = store.setting(path) else { log("settings test: no \(path) for \(game)"); return }
+        let other = (before.options ?? []).first { $0 != globalLimit.value } ?? before.value
+        store.set(before, to: other)
+        let set = store.setting(path)
+        log("settings test: \(game) frame limit \(before.value) (overridden \(before.overridden ?? false)) -> \(set?.value ?? "?") (overridden \(set?.overridden ?? false)); global stays \(SettingsStore().setting(path)?.value ?? "?")")
+        if let set { store.reset(set) }
+        let after = store.setting(path)
+        log("settings test: after reset \(after?.value ?? "?") (overridden \(after?.overridden ?? false)), error \(store.lastError ?? "none")")
+    }
+
     /// For scripts/run.sh: RPCS3_AUTO_FIRMWARE=1 installs Documents/PS3UPDAT.PUP when no
     /// firmware is installed; RPCS3_AUTO_BOOT=<folder in Games> then boots that game.
     private func runTestHook() {
         let env = ProcessInfo.processInfo.environment
+        if let game = env["RPCS3_SETTINGS_SELFTEST"], !game.isEmpty {
+            settingsSelfTest(game: game)
+        }
         let bootName = env["RPCS3_AUTO_BOOT"]
 
         let bootIfAsked = { [self] in

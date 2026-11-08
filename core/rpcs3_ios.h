@@ -93,6 +93,22 @@ void rpcs3_ios_stop(void);
 // system_state: 0 stopped, 1 loading, 2 stopping, 3 running, 4 paused, 5 frozen, 6 ready, 7 starting.
 int rpcs3_ios_state(void);
 
+// Settings (core/settings.cpp). game: NULL or "" for the global settings (config.yml), or a title ID
+// for that game's own settings, which RPCS3 applies over the global ones when it boots.
+// A setting's path is its names in the config tree, separated by '\n' ("Video\nVulkan\nAdapter").
+
+// All settings as JSON, to free with rpcs3_ios_free:
+// {"running": bool, "settings": [{"path": [...], "type": "bool|enum|int|uint|float|string",
+//   "value": "...", "reset": "...", "dynamic": bool, "options": [...] | "min"/"max": "...",
+//   "overridden": bool (for a game only)}]}
+// "reset" is what resetting gives: the default (iOS's where it differs), or the global value for a game.
+char* rpcs3_ios_settings(const char* game);
+// Sets and saves one setting (value as written in config.yml). 0 on success, else -1 and a message.
+int rpcs3_ios_setting_set(const char* game, const char* path, const char* value, char* error, size_t error_size);
+// Global: back to the default. Game: back to the global value (the game no longer sets it).
+int rpcs3_ios_setting_reset(const char* game, const char* path, char* error, size_t error_size);
+void rpcs3_ios_free(void* pointer);
+
 #ifdef __cplusplus
 }
 #endif

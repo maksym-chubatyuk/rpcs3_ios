@@ -40,6 +40,12 @@ void core_resume(void);
 void core_stop(void);
 int core_state(void);
 
+// Settings (see rpcs3_ios_settings in core/rpcs3_ios.h). core_settings returns JSON to release with core_free.
+char* core_settings(const char* game);
+int core_setting_set(const char* game, const char* path, const char* value, char* error, size_t error_size);
+int core_setting_reset(const char* game, const char* path, char* error, size_t error_size);
+void core_free(void* pointer);
+
 #ifdef __cplusplus
 }
 #endif

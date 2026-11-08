@@ -20,6 +20,10 @@ static struct
 	void (*resume)(void);
 	void (*stop)(void);
 	int (*state)(void);
+	char* (*settings)(const char*);
+	int (*setting_set)(const char*, const char*, const char*, char*, size_t);
+	int (*setting_reset)(const char*, const char*, char*, size_t);
+	void (*free_memory)(void*);
 } g_core;
 
 static bool g_loaded;
@@ -71,6 +75,10 @@ bool core_load(char* error, size_t error_size)
 	RESOLVE(resume, "rpcs3_ios_resume");
 	RESOLVE(stop, "rpcs3_ios_stop");
 	RESOLVE(state, "rpcs3_ios_state");
+	RESOLVE(settings, "rpcs3_ios_settings");
+	RESOLVE(setting_set, "rpcs3_ios_setting_set");
+	RESOLVE(setting_reset, "rpcs3_ios_setting_reset");
+	RESOLVE(free_memory, "rpcs3_ios_free");
 #undef RESOLVE
 
 	g_loaded = true;
@@ -104,3 +112,17 @@ void core_pause(void) { if (g_loaded) g_core.pause(); }
 void core_resume(void) { if (g_loaded) g_core.resume(); }
 void core_stop(void) { if (g_loaded) g_core.stop(); }
 int core_state(void) { return g_loaded ? g_core.state() : 0; }
+
+char* core_settings(const char* game) { return g_loaded ? g_core.settings(game) : NULL; }
+
+int core_setting_set(const char* game, const char* path, const char* value, char* error, size_t error_size)
+{
+	return g_loaded ? g_core.setting_set(game, path, value, error, error_size) : -100;
+}
+
+int core_setting_reset(const char* game, const char* path, char* error, size_t error_size)
+{
+	return g_loaded ? g_core.setting_reset(game, path, error, error_size) : -100;
+}
+
+void core_free(void* pointer) { if (g_loaded && pointer) g_core.free_memory(pointer); }

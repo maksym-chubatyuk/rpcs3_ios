@@ -30,6 +30,7 @@ target_link_libraries(rpcs3_ios_input PUBLIC rpcs3_emu 3rdparty::hidapi 3rdparty
 add_library(RPCS3Core SHARED
     ${RPCS3_IOS_CORE}/rpcs3_ios.mm
     ${RPCS3_IOS_CORE}/rpcs3_ios.h
+    ${RPCS3_IOS_CORE}/settings.cpp
     ${RPCS3_SRC}/rpcs3_version.cpp
     ${RPCS3_SRC}/stdafx.cpp
 )
@@ -41,6 +42,7 @@ target_link_libraries(RPCS3Core
         rpcs3_ios_input
         rpcs3_emu
         3rdparty::stblib
+        3rdparty::yaml-cpp
         3rdparty::hidapi
         3rdparty::libusb
         3rdparty::wolfssl

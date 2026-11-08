@@ -8,6 +8,14 @@ struct ContentView: View {
     @State private var importKind: ImportKind = .firmware
     @State private var showImporter = false
     @State private var playing: Emulator.Game?
+    @State private var settingsFor: SettingsTarget?
+
+    /// Whose settings are open: the global ones, or a game's own.
+    struct SettingsTarget: Identifiable {
+        let gameID: String?
+        let title: String?
+        var id: String { gameID ?? "" }
+    }
 
     /// What the Files picker is open for.
     enum ImportKind: Identifiable {
@@ -46,11 +54,18 @@ struct ContentView: View {
             .refreshable { emulator.refreshGames() }
             .toolbar {
                 if emulator.coreReady {
-                    Menu {
-                        Button("Game folder…", systemImage: "folder") { importFile(.gameFolder) }
-                        Button("ISO file…", systemImage: "opticaldisc") { importFile(.gameISO) }
-                    } label: {
-                        Label("Add game", systemImage: "plus")
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Settings", systemImage: "gearshape") { settingsFor = SettingsTarget(gameID: nil, title: nil) }
+                    }
+                }
+                if emulator.coreReady {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            Button("Game folder…", systemImage: "folder") { importFile(.gameFolder) }
+                            Button("ISO file…", systemImage: "opticaldisc") { importFile(.gameISO) }
+                        } label: {
+                            Label("Add game", systemImage: "plus")
+                        }
                     }
                 }
             }
@@ -82,6 +97,9 @@ struct ContentView: View {
         }
         .fullScreenCover(item: $playing) { game in
             GameScreen(game: game) { playing = nil }
+        }
+        .sheet(item: $settingsFor) { target in
+            SettingsView(store: SettingsStore(gameID: target.gameID, gameTitle: target.title))
         }
     }
 
@@ -116,6 +134,17 @@ struct ContentView: View {
                 .swipeActions {
                     if game.isExternal {
                         Button("Remove", role: .destructive) { emulator.remove(game) }
+                    }
+                }
+                .swipeActions(edge: .leading) {
+                    if let id = game.titleID {
+                        Button("Settings", systemImage: "gearshape") { settingsFor = SettingsTarget(gameID: id, title: game.title) }
+                            .tint(.gray)
+                    }
+                }
+                .contextMenu {
+                    if let id = game.titleID {
+                        Button("Settings for This Game", systemImage: "gearshape") { settingsFor = SettingsTarget(gameID: id, title: game.title) }
                     }
                 }
             }

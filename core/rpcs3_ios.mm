@@ -538,6 +538,13 @@ namespace
 #endif
 }
 
+// The Vulkan device the app renders with, for settings.cpp (its default for Video/Vulkan/Adapter)
+std::string ios_vulkan_adapter()
+{
+	static const std::string name = vulkan_adapter_name();
+	return name;
+}
+
 // Frontend globals the core and the input code refer to (rpcs3.cpp, rpcs3qt on desktop)
 std::string g_input_config_override;
 cfg_input_configurations g_cfg_input_configs;
