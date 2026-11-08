@@ -75,6 +75,20 @@ struct SettingsView: View {
                 Text("Some settings apply only from the next time a game starts.")
             }
         }
+        if store.gameID == nil {
+            Section {
+            } footer: {
+                Text("RPCS3 for iOS \(Self.appVersion)")
+                    .frame(maxWidth: .infinity)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    /// "0.1.0 (11)", for bug reports
+    static var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        return "\(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))"
     }
 
     @ViewBuilder private var searchResults: some View {

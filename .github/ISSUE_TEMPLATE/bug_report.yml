@@ -1,0 +1,67 @@
+name: Bug report
+description: Something does not work in RPCS3 for iOS (the app, JIT, or a game).
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please check first whether the game works in desktop RPCS3
+        ([compatibility list](https://rpcs3.net/compatibility)): problems of the game itself are
+        RPCS3's, problems that only happen on the iPhone belong here.
+  - type: input
+    id: device
+    attributes:
+      label: iPhone model
+      placeholder: iPhone 16 Pro Max
+    validations:
+      required: true
+  - type: input
+    id: ios
+    attributes:
+      label: iOS version
+      placeholder: "26.1"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: At the bottom of the app's Settings.
+      placeholder: "0.1.0 (11)"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How the app was installed, and how JIT is enabled
+      options:
+        - SideStore, JIT from the app (LocalDevVPN)
+        - AltStore, JIT from the app (LocalDevVPN)
+        - Sideloadly, JIT from the app (LocalDevVPN)
+        - JIT from StikDebug
+        - Other (say below)
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game, with its serial
+      description: Leave empty if the problem is not about a game.
+      placeholder: Hyperdimension Neptunia mk2 (BLES01507)
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happens
+      description: What you did, what you expected, and what happened instead. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: RPCS3.log
+      description: |
+        In the app: Settings › Logs › RPCS3.log › Share, right after the problem. If the app crashed,
+        share **Previous** instead (the log of the last time the app was open). Attach the file here
+        by dragging it in.
+    validations:
+      required: true

@@ -281,7 +281,12 @@ namespace
 
 		if (::symlink(bundled.c_str(), link.c_str()) != 0)
 		{
-			ios_log.error("Could not link the bundled icons to %s (errno %d)", link, errno);
+			// A folder of its own (custom icons, or a copy from an older version) is used first;
+			// RPCS3 finds the bundled icons next to the executable for anything missing there
+			if (errno == EEXIST && fs::is_dir(link))
+				ios_log.notice("Using the icons in %s, then the bundled ones", link);
+			else
+				ios_log.error("Could not link the bundled icons to %s (errno %d)", link, errno);
 		}
 	}
 
@@ -734,6 +739,9 @@ extern "C" int rpcs3_ios_initialize(rpcs3_ios_event_fn events)
 
 	// As rpcs3.cpp does on desktop: the thread pool finalizer first, then the log file
 	static_cast<void>(named_thread("", [](int) {}));
+	// The last session's log is kept: a crash is reported after the app has been opened again
+	if (fs::is_file(fs::get_log_dir() + "RPCS3.log"))
+		fs::rename(fs::get_log_dir() + "RPCS3.log", fs::get_log_dir() + "RPCS3.previous.log", true);
 	static std::unique_ptr<logs::listener> s_log_file = logs::make_file_listener(fs::get_log_dir() + "RPCS3.log", 256ull << 20);
 	fs::remove_file(fs::get_config_dir() + "fatal_error.txt");
 	ios_log.always()("RPCS3 for iOS; JIT pool ready");

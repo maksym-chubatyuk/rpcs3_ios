@@ -6,6 +6,28 @@ LLVM recompilers running natively on arm64.
 Needs iOS 26 or later and JIT, which on iOS needs a debugger to attach once per launch. The app does
 that itself (below), or StikDebug can, or a Mac during development (`scripts/run.sh`).
 
+## Installing
+
+1. Download `RPCS3-<version>.ipa` from [Releases](https://github.com/maksym-chubatyuk/rpcs3_ios/releases).
+2. Install it with a sideloading tool that signs apps with your Apple ID, such as SideStore,
+   AltStore or Sideloadly. A free Apple ID works; apps signed with one have to be refreshed every
+   7 days.
+3. Enable JIT, which every launch needs (below).
+4. Install the PS3 firmware: download `PS3UPDAT.PUP` from
+   [PlayStation's PS3 system software page](https://www.playstation.com/support/hardware/ps3/system-software/),
+   then tap **Choose PS3UPDAT.PUP in Files…** in the app.
+5. Add your games with **+**: a game folder (with `PS3_GAME` or `USRDIR` in it) or an ISO, from
+   anywhere the Files app reaches, or install PKG files with their `.rap` licences
+   (**+ › Install Packages**). Dump games from your own console; this project provides none.
+
+Needs iOS 26 or later. Developed and tested on an iPhone 16 Pro Max (A18 Pro, 8 GB); phones with
+less memory may not run larger games. How well a game runs follows
+[RPCS3's compatibility list](https://rpcs3.net/compatibility), within what a phone's GPU and memory allow.
+
+**Problems**: [open an issue](https://github.com/maksym-chubatyuk/rpcs3_ios/issues/new/choose) with
+the log (Settings › Logs › RPCS3.log › Share; after a crash, the Previous one). Please do not report problems of this iOS version to
+RPCS3's own tracker.
+
 ## JIT without a Mac
 
 1. Get this iPhone's pairing file (a `.plist` made by iloader, or the pairing tool StikDebug's
@@ -139,6 +161,13 @@ What still has to be checked by hand on a phone is listed in [TESTING.md](TESTIN
 
 The app icon is RPCS3's own logo, made from the submodule's `rpcs3/rpcs3.svg` with
 `swift scripts/gen-app-icon.swift`.
+
+## Releasing
+
+```sh
+scripts/package-ipa.sh 0.2.0      # build/release/RPCS3-0.2.0.ipa, Release build, signed ad hoc
+gh release create v0.2.0 build/release/RPCS3-0.2.0.ipa --title "RPCS3 for iOS 0.2.0" --notes "..."
+```
 
 ## Updating RPCS3
 

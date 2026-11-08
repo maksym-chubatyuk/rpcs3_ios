@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: RPCS3 compatibility list
+    url: https://rpcs3.net/compatibility
+    about: How well a game runs in RPCS3 itself, on a computer.

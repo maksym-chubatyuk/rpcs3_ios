@@ -3,23 +3,30 @@ import SwiftUI
 /// RPCS3's logs, as desktop's log and TTY panes show them, and sharing them for a bug report.
 struct LogView: View {
     enum File: String, CaseIterable, Identifiable {
-        case rpcs3 = "RPCS3.log", tty = "TTY.log", app = "App"
+        case rpcs3 = "RPCS3.log", previous = "Previous", tty = "TTY.log", app = "App"
         var id: Self { self }
 
         var url: URL {
+            let logs = URL(fileURLWithPath: String(cString: core_log_dir()))
             switch self {
-            case .rpcs3, .tty: URL(fileURLWithPath: String(cString: core_log_dir())).appending(path: rawValue)
-            case .app: URL.documentsDirectory.appending(path: "rpcs3-app.log")
+            case .rpcs3: return logs.appending(path: "RPCS3.log")
+            case .previous: return logs.appending(path: "RPCS3.previous.log")
+            case .tty: return logs.appending(path: "TTY.log")
+            case .app: return URL.documentsDirectory.appending(path: "rpcs3-app.log")
             }
         }
 
         var about: String {
             switch self {
-            case .rpcs3: "What the emulator did: the log RPCS3's developers ask for with a bug report."
+            case .rpcs3: "What the emulator did since the app was opened: the log for a bug report."
+            case .previous: "RPCS3.log from the last time the app was open: the one to share after a crash."
             case .tty: "What the game itself printed."
             case .app: "What the app did: JIT, loading the emulator, installs."
             }
         }
+
+        /// RPCS3's own logs, which the level filter applies to
+        var isRPCS3: Bool { self == .rpcs3 || self == .previous }
     }
 
     enum Level: String, CaseIterable, Identifiable {
@@ -54,7 +61,7 @@ struct LogView: View {
                     ForEach(File.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                if file == .rpcs3 {
+                if file.isRPCS3 {
                     Picker("Show", selection: $level) {
                         ForEach(Level.allCases) { Text($0.rawValue).tag($0) }
                     }
@@ -96,7 +103,7 @@ struct LogView: View {
     private var filtered: [Line] {
         let words = query.lowercased().split(separator: " ")
         return lines.filter { line in
-            switch level {
+            switch file.isRPCS3 ? level : .all {
             case .all: break
             case .warnings: guard let l = line.level, "FEUW".contains(l) else { return false }
             case .errors: guard let l = line.level, "FE".contains(l) else { return false }
