@@ -11,6 +11,9 @@ struct ContentView: View {
     @State private var settingsFor: SettingsTarget?
     @State private var detailsFor: Game?
     @State private var managing: Manager?
+    @State private var pickingPackages = false
+    @State private var installing: PackageInstaller?
+    @State private var uninstalling: Game?
     @State private var userName = ""
     @Environment(\.openURL) private var openURL
 
@@ -85,6 +88,8 @@ struct ContentView: View {
                         Menu {
                             Button("Game folder…", systemImage: "folder") { importFile(.gameFolder) }
                             Button("ISO file…", systemImage: "opticaldisc") { importFile(.gameISO) }
+                            Divider()
+                            Button("Install Packages (PKG, RAP, EDAT)…", systemImage: "shippingbox") { pickingPackages = true }
                         } label: {
                             Label("Add game", systemImage: "plus")
                         }
@@ -109,6 +114,18 @@ struct ContentView: View {
             } message: {
                 Text(emulator.lastMessage ?? "")
             }
+        }
+        .fileImporter(isPresented: $pickingPackages, allowedContentTypes: PackageInstaller.fileTypes, allowsMultipleSelection: true) { result in
+            if case .success(let urls) = result, !urls.isEmpty { installing = PackageInstaller(urls: urls) }
+        }
+        .sheet(item: $installing) { installer in
+            PackageInstallView(installer: installer)
+        }
+        .confirmationDialog("Uninstall \(uninstalling?.title ?? "")?", isPresented: Binding(get: { uninstalling != nil }, set: { if !$0 { uninstalling = nil } }),
+                            titleVisibility: .visible, presenting: uninstalling) { game in
+            Button("Uninstall", role: .destructive) { emulator.uninstall(game) }
+        } message: { _ in
+            Text("The game is deleted together with its updates and add-ons. Its saves and settings are kept.")
         }
         .onChange(of: emulator.autoBoot) { _, request in
             if let request {
@@ -180,7 +197,7 @@ struct ContentView: View {
                         Text(game.title)
                             .foregroundStyle(.primary)
                             .lineLimit(2)
-                        Text([game.titleID, game.isExternal ? "from Files" : nil].compactMap { $0 }.joined(separator: " · "))
+                        Text([game.titleID, game.isExternal ? "from Files" : game.isInstalled ? "installed" : nil].compactMap { $0 }.joined(separator: " · "))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -203,6 +220,8 @@ struct ContentView: View {
         .swipeActions {
             if game.isExternal {
                 Button("Remove", role: .destructive) { emulator.remove(game) }
+            } else if game.isInstalled {
+                Button("Uninstall", role: .destructive) { uninstalling = game }
             }
         }
         .swipeActions(edge: .leading) {
@@ -257,6 +276,8 @@ struct ContentView: View {
             }
             if game.isExternal {
                 Button("Remove from Library", systemImage: "minus.circle", role: .destructive) { emulator.remove(game) }
+            } else if game.isInstalled {
+                Button("Uninstall…", systemImage: "trash", role: .destructive) { uninstalling = game }
             }
         }
     }

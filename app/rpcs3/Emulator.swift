@@ -209,6 +209,7 @@ final class Emulator {
         }
         coreReady = true
         firmwareVersion = String(cString: core_firmware_version())
+        refreshGames() // with the games installed in dev_hdd0
         runTestHook()
         log("core ready, emulator dir \(String(cString: core_emulator_dir())), firmware '\(firmwareVersion)'")
     }
@@ -325,6 +326,31 @@ final class Emulator {
                 log("userdata test: back -> \(back ?? "ok"), active \(UserList.load().active), remove -> \(removed ?? "ok"), users \(UserList.load().users.count)")
             }
         }
+        // RPCS3_PACKAGES_TEST=1: an invalid package, a licence file, the installed games, trophy dates
+        if env["RPCS3_PACKAGES_TEST"] != nil {
+            let docs = URL.documentsDirectory
+            let junk = docs.appending(path: "test-junk.pkg")
+            let rap = docs.appending(path: "TESTLICENSE0000000000000000000000.rap")
+            try? Data(repeating: 0x42, count: 4096).write(to: junk)
+            try? Data(repeating: 0x17, count: 16).write(to: rap)
+            let info = CoreCall.decode(PackageInfo.self, core_package_info(junk.path))
+            log("packages test: junk package valid \(info?.valid.description ?? "nil")")
+            let failure = CoreCall.message { core_install_packages(junk.path, nil, nil, $0, $1) }
+            log("packages test: installing it -> \(failure ?? "accepted!")")
+            let license = CoreCall.message { core_install_license(rap.path, $0, $1) }
+            let exdata = URL(fileURLWithPath: String(cString: core_emulator_dir())).appending(path: "dev_hdd0/home/\(UserList.load().active)/exdata/\(rap.lastPathComponent)")
+            log("packages test: licence -> \(license ?? "ok"), in exdata \(FileManager.default.fileExists(atPath: exdata.path))")
+            try? FileManager.default.removeItem(at: exdata)
+            try? FileManager.default.removeItem(at: junk)
+            try? FileManager.default.removeItem(at: rap)
+            let hdd0 = String(cString: core_hdd0_game_dir())
+            let folders = (try? FileManager.default.contentsOfDirectory(atPath: hdd0)) ?? []
+            log("packages test: dev_hdd0/game \(folders.sorted()), installed games in library \(games.filter(\.isInstalled).map(\.title))")
+            if let set = TrophyGame.all().first {
+                let earned = (CoreCall.decode([Trophy].self, core_trophies(set.id)) ?? []).filter(\.earned)
+                log("packages test: earned trophies \(earned.map { "\($0.name) at \($0.earnedDate?.description ?? "none")" })")
+            }
+        }
         // RPCS3_REMOVE_DATA=<item>: removes that item (GameData) of the first game, then reports what is left
         if let item = env["RPCS3_REMOVE_DATA"], let game = games.first, let before = gameData(game) {
             let ok = removeData(item, of: game)
@@ -397,7 +423,8 @@ final class Emulator {
     // MARK: Games
 
     func refreshGames() {
-        games = GameLibrary.load(gamesFolder: gamesDirectory)
+        let installed = coreReady ? String(cString: core_hdd0_game_dir()) : ""
+        games = GameLibrary.load(gamesFolder: gamesDirectory, installedFolder: installed.isEmpty ? nil : URL(fileURLWithPath: installed))
     }
 
     /// A game folder or ISO chosen in the Files app.
@@ -408,6 +435,13 @@ final class Emulator {
         } else {
             lastMessage = "That is not a PS3 game. Choose the game's folder (the one containing PS3_GAME or USRDIR), or an ISO file."
         }
+    }
+
+    /// Deletes a game installed from a package, with its updates and DLC (dev_hdd0/game/<title ID>*).
+    func uninstall(_ game: Game) {
+        guard game.isInstalled else { return }
+        removeData("installed", of: game)
+        refreshGames()
     }
 
     func remove(_ game: Game) {

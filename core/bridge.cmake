@@ -36,6 +36,7 @@ add_library(RPCS3Core SHARED
     ${RPCS3_IOS_CORE}/patches.cpp
     ${RPCS3_IOS_CORE}/controls.cpp
     ${RPCS3_IOS_CORE}/userdata.cpp
+    ${RPCS3_IOS_CORE}/packages.cpp
     ${RPCS3_SRC}/rpcs3_version.cpp
     ${RPCS3_SRC}/stdafx.cpp
 )

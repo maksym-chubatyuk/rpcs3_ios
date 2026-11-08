@@ -15,6 +15,17 @@ Tick an item off when it works; note what went wrong otherwise.
 - [ ] A game copied into On My iPhone › RPCS3 › Games shows up after pull to refresh.
 - [ ] Remove from Library (Files games), and the context menu's Copy Serial and Check Compatibility.
 
+## Installing packages
+
+- [ ] + › Install Packages: pick a game PKG with its .rap licence; the review lists title, version, type and size.
+- [ ] The installation shows progress, Cancel stops it, and the installed game appears in the library ("installed").
+- [ ] The installed game starts (its licence works).
+- [ ] An update PKG for a disc game installs, and the game page's version and patches follow it.
+- [ ] An update for the wrong version is marked and skipped.
+- [ ] A DLC PKG installs and the game sees it.
+- [ ] Uninstall (swipe, long press, game page) deletes the installed game, its update and DLC.
+- [ ] Leaving the app during an installation: it either finishes or is cancelled cleanly.
+
 ## Playing
 
 - [ ] The screen stays in landscape in a game and the touch controls work.

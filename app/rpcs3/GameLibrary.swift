@@ -18,15 +18,26 @@ struct Game: Identifiable, Hashable {
     var iconURL: URL?
 
     var isExternal: Bool { bookmark != nil }
+    /// Installed from a package into the console's internal drive (dev_hdd0/game).
+    var isInstalled: Bool { id.hasPrefix("hdd0:") }
     var isISO: Bool { url.pathExtension.lowercased() == "iso" }
 }
 
 enum GameLibrary {
     private static let bookmarksKey = "externalGameBookmarks"
 
-    /// Games in `folder` and those added from the Files app.
-    static func load(gamesFolder folder: URL) -> [Game] {
+    /// Games in `folder`, those added from the Files app, and those installed from packages.
+    static func load(gamesFolder folder: URL, installedFolder: URL?) -> [Game] {
         var games: [Game] = []
+
+        // dev_hdd0/game holds installed games, and also updates and DLC (category GD), which are not games
+        if let installedFolder {
+            let installed = (try? FileManager.default.contentsOfDirectory(at: installedFolder, includingPropertiesForKeys: nil)) ?? []
+            for url in installed where FileManager.default.fileExists(atPath: url.appending(path: "USRDIR/EBOOT.BIN").path) {
+                let game = make(url: url, bookmark: nil, installed: true)
+                if let category = game.info["CATEGORY"], category != "GD" { games.append(game) }
+            }
+        }
 
         let items = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
         for url in items where isBootable(url) {
@@ -81,7 +92,7 @@ enum GameLibrary {
             || fm.fileExists(atPath: url.appending(path: "USRDIR/EBOOT.BIN").path)
     }
 
-    private static func make(url: URL, bookmark: Data?) -> Game {
+    private static func make(url: URL, bookmark: Data?, installed: Bool = false) -> Game {
         // A disc game keeps its metadata in PS3_GAME/, a game in HDD layout at its top
         let folder = ["PS3_GAME", ""].lazy
             .map { $0.isEmpty ? url : url.appending(path: $0) }
@@ -89,7 +100,7 @@ enum GameLibrary {
         let sfo = folder.flatMap { try? Data(contentsOf: $0.appending(path: "PARAM.SFO")) }.flatMap(ParamSFO.init(data:))
         let icon = folder.map { $0.appending(path: "ICON0.PNG") }.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
         let fallback = url.deletingPathExtension().lastPathComponent
-        return Game(id: (bookmark != nil ? "ext:" : "local:") + url.path,
+        return Game(id: (installed ? "hdd0:" : bookmark != nil ? "ext:" : "local:") + url.path,
                     url: url,
                     title: sfo?.strings["TITLE"] ?? fallback,
                     titleID: sfo?.strings["TITLE_ID"],

@@ -78,6 +78,13 @@ char* core_trophies(const char* communication_id);
 int core_trophy_set_earned(const char* communication_id, int trophy, int earned);
 int core_trophy_game_remove(const char* communication_id);
 
+// Packages and licences (see rpcs3_ios_package_info in core/rpcs3_ios.h)
+char* core_package_info(const char* path);
+int core_install_packages(const char* paths, void (*progress)(void*, uint32_t, uint32_t), void* ctx, char* message, size_t message_size);
+void core_cancel_install(void);
+int core_install_license(const char* path, char* message, size_t message_size);
+const char* core_hdd0_game_dir(void);
+
 #ifdef __cplusplus
 }
 #endif

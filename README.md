@@ -122,6 +122,10 @@ be deleted, exported to the Files app as their folders and imported from there, 
 from desktop RPCS3 (`dev_hdd0/home/00000001/savedata/<folder>`). A game's page shows its own saves
 and trophies. `core/userdata.cpp` mirrors desktop's user, save data and trophy managers.
 
+**Packages**: + › Install Packages installs PKG files (games, updates, DLC) into the console's
+drive as desktop does, together with licences (.rap) and .edat files for the logged-in user; games
+installed this way are in the library and can be uninstalled there (`core/packages.cpp`).
+
 What still has to be checked by hand on a phone is listed in [TESTING.md](TESTING.md).
 
 ## Updating RPCS3

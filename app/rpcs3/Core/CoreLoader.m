@@ -48,6 +48,11 @@ static struct
 	char* (*trophies)(const char*);
 	int (*trophy_set_earned)(const char*, int, int);
 	int (*trophy_game_remove)(const char*);
+	char* (*package_info)(const char*);
+	int (*install_packages)(const char*, void (*)(void*, uint32_t, uint32_t), void*, char*, size_t);
+	void (*cancel_install)(void);
+	int (*install_license)(const char*, char*, size_t);
+	const char* (*hdd0_game_dir)(void);
 } g_core;
 
 static bool g_loaded;
@@ -127,6 +132,11 @@ bool core_load(char* error, size_t error_size)
 	RESOLVE(trophies, "rpcs3_ios_trophies");
 	RESOLVE(trophy_set_earned, "rpcs3_ios_trophy_set_earned");
 	RESOLVE(trophy_game_remove, "rpcs3_ios_trophy_game_remove");
+	RESOLVE(package_info, "rpcs3_ios_package_info");
+	RESOLVE(install_packages, "rpcs3_ios_install_packages");
+	RESOLVE(cancel_install, "rpcs3_ios_cancel_install");
+	RESOLVE(install_license, "rpcs3_ios_install_license");
+	RESOLVE(hdd0_game_dir, "rpcs3_ios_hdd0_game_dir");
 #undef RESOLVE
 
 	g_loaded = true;
@@ -219,3 +229,11 @@ char* core_trophy_games(void) { return g_loaded ? g_core.trophy_games() : NULL; 
 char* core_trophies(const char* communication_id) { return g_loaded ? g_core.trophies(communication_id) : NULL; }
 int core_trophy_set_earned(const char* communication_id, int trophy, int earned) { return g_loaded ? g_core.trophy_set_earned(communication_id, trophy, earned) : -100; }
 int core_trophy_game_remove(const char* communication_id) { return g_loaded ? g_core.trophy_game_remove(communication_id) : -100; }
+char* core_package_info(const char* path) { return g_loaded ? g_core.package_info(path) : NULL; }
+int core_install_packages(const char* paths, void (*progress)(void*, uint32_t, uint32_t), void* ctx, char* message, size_t message_size)
+{
+	return g_loaded ? g_core.install_packages(paths, progress, ctx, message, message_size) : -100;
+}
+void core_cancel_install(void) { if (g_loaded) g_core.cancel_install(); }
+int core_install_license(const char* path, char* message, size_t message_size) { return g_loaded ? g_core.install_license(path, message, message_size) : -100; }
+const char* core_hdd0_game_dir(void) { return g_loaded ? g_core.hdd0_game_dir() : ""; }

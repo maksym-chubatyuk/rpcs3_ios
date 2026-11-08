@@ -48,6 +48,22 @@ int rpcs3_ios_install_firmware(const char* pup_path, rpcs3_ios_progress_fn progr
 // Install a .pkg (game, update or DLC). Blocking; call it from a background thread.
 int rpcs3_ios_install_pkg(const char* pkg_path);
 
+// Packages (core/packages.cpp), as desktop's "Install Packages/Raps/Edats". What a .pkg holds, as JSON
+// to free with rpcs3_ios_free: {"valid": bool, "title", "titleID", "version", "category",
+// "type": "game|update|dlc|other", "size": bytes, "installed": installed version or "" or "?",
+// "problem": why it cannot go over what is installed, or ""}
+char* rpcs3_ios_package_info(const char* path);
+// Installs .pkg files (paths separated by '\n') in order, while no game runs. Blocking; call it from a
+// background thread. progress(ctx, done, total). 0 on success, -2 for an update that does not fit the
+// installed version, -3 when cancelled, -1 otherwise; message says what happened.
+int rpcs3_ios_install_packages(const char* paths, rpcs3_ios_progress_fn progress, void* ctx, char* message, size_t message_size);
+// Stops the running installation (any thread).
+void rpcs3_ios_cancel_install(void);
+// A licence (.rap) or .edat file, into the logged-in user's exdata. 0 on success.
+int rpcs3_ios_install_license(const char* path, char* message, size_t message_size);
+// dev_hdd0/game/: installed games, updates and DLC, each in a folder named after its title ID.
+const char* rpcs3_ios_hdd0_game_dir(void);
+
 // The view the game renders into: a UIView whose layer is a CAMetalLayer. Sizes are in pixels.
 // Set it before booting; update the size when it changes.
 void rpcs3_ios_set_render_view(void* uiview, int32_t width, int32_t height, double refresh_rate);

@@ -243,8 +243,11 @@ struct GameDetailView: View {
                         Text("Trophies")
                     }
                 }
-                storageRow("Updates and DLC", size: data.installedData, item: "installed",
-                           note: "Installed updates and downloadable content are deleted; install them again from their PKG files.")
+                if !game.isInstalled {
+                    // For an installed game this is the game itself: Uninstall removes it
+                    storageRow("Updates and DLC", size: data.installedData, item: "installed",
+                               note: "Installed updates and downloadable content are deleted; install them again from their PKG files.")
+                }
             }
         }
     }
@@ -304,6 +307,15 @@ struct GameDetailView: View {
                                            message: "The game stays where it is in the Files app; its saves and settings are kept.",
                                            button: "Remove from Library") {
                         emulator.remove(game)
+                        dismiss()
+                    }
+                }
+            } else if game.isInstalled {
+                Button("Uninstall", systemImage: "trash", role: .destructive) {
+                    confirm = Confirmation(title: "Uninstall \(game.title)?",
+                                           message: "The game is deleted together with its updates and add-ons. Its saves and settings are kept.",
+                                           button: "Uninstall") {
+                        emulator.uninstall(game)
                         dismiss()
                     }
                 }
