@@ -1,0 +1,155 @@
+Memory setup for iOS: no MAP_JIT, a 24 GiB guest map instead of 56 GiB (the hook region is unused), shared memory from a file when shm_open is unavailable.
+
+diff --git a/rpcs3/Emu/Memory/vm.cpp b/rpcs3/Emu/Memory/vm.cpp
+index ae7e3dd70..394ac7e5d 100644
+--- a/rpcs3/Emu/Memory/vm.cpp
++++ b/rpcs3/Emu/Memory/vm.cpp
+@@ -48,11 +48,21 @@ namespace vm
+ 	// Auxiliary virtual memory for executable areas
+ 	u8* const g_exec_addr = memory_reserve_4GiB(g_sudo_addr, 0x300000000);
+ 
++#ifdef RPCS3_IOS
++	// iOS: an app's user address map ends at 63 GiB (0xFC0000000) without the extended virtual
++	// addressing entitlement, which free developer accounts cannot get. The 32 GiB hook region is
++	// not used by anything outside this file, so it is left out and the rest (24 GiB) fits.
++	u8* const g_hook_addr = nullptr;
++
++	// Stats for debugging
++	u8* const g_stat_addr = memory_reserve_4GiB(g_exec_addr + 0x200000000);
++#else
+ 	// Hooks for memory R/W interception (default: zero offset to some function with only ret instructions)
+ 	u8* const g_hook_addr = memory_reserve_4GiB(g_exec_addr, 0x800000000);
+ 
+ 	// Stats for debugging
+ 	u8* const g_stat_addr = memory_reserve_4GiB(g_hook_addr);
++#endif
+ 
+ 	// For SPU
+ 	u8* const g_free_addr = g_stat_addr + 0x1'0000'0000;
+@@ -2306,7 +2316,9 @@ namespace vm
+ 
+ 	inline namespace ps3_
+ 	{
++#ifndef RPCS3_IOS
+ 		static utils::shm s_hook{0x800000000, ""};
++#endif
+ 
+ 		void init()
+ 		{
+@@ -2345,7 +2357,9 @@ namespace vm
+ #ifdef _WIN32
+ 			utils::memory_release(g_hook_addr, 0x800000000);
+ #endif
++#ifndef RPCS3_IOS
+ 			ensure(s_hook.map(g_hook_addr, utils::protection::rw, true));
++#endif
+ 		}
+ 	}
+ 
+@@ -2372,7 +2386,7 @@ namespace vm
+ #ifdef _WIN32
+ 		s_hook.unmap(g_hook_addr);
+ 		ensure(utils::memory_reserve(0x800000000, g_hook_addr));
+-#else
++#elif !defined(RPCS3_IOS)
+ 		utils::memory_decommit(g_hook_addr, 0x800000000);
+ #endif
+ 
+diff --git a/rpcs3/util/vm_native.cpp b/rpcs3/util/vm_native.cpp
+index 2bd422b59..9e779e2a1 100644
+--- a/rpcs3/util/vm_native.cpp
++++ b/rpcs3/util/vm_native.cpp
+@@ -254,7 +254,7 @@ namespace utils
+ 		// Memory mapping regions will be replaced by file-backed MAP_FIXED mappings
+ 		// (via shm::map), which is incompatible with MAP_JIT. Only use MAP_JIT for
+ 		// non-mapping regions that need JIT executable support.
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(RPCS3_IOS) // iOS: no MAP_JIT, executable memory comes from util/jit_pool
+ 		const int jit_flag = is_memory_mapping || !can_be_jit ? 0 : MAP_JIT;
+ #ifdef ARCH_ARM64
+ 		auto ptr = ::mmap(use_addr, size, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | jit_flag | c_map_noreserve, -1, 0);
+@@ -346,7 +346,7 @@ namespace utils
+ 		ensure(::VirtualFree(pointer, size, MEM_DECOMMIT));
+ #else
+ 		const u64 ptr64 = reinterpret_cast<u64>(pointer);
+-#if defined(__APPLE__) && defined(ARCH_ARM64)
++#if defined(__APPLE__) && defined(ARCH_ARM64) && !defined(RPCS3_IOS)
+ 		// Hack: on macOS, Apple explicitly fails mmap if you combine MAP_FIXED and MAP_JIT.
+ 		// So we unmap the space and just hope it maps to the same address we got before instead.
+ 		// The Xcode manpage says the pointer is a hint and the OS will try to map at the hint location
+@@ -380,7 +380,7 @@ namespace utils
+ 		memory_commit(pointer, size, prot);
+ #else
+ 		const u64 ptr64 = reinterpret_cast<u64>(pointer);
+-#if defined(__APPLE__) && defined(ARCH_ARM64)
++#if defined(__APPLE__) && defined(ARCH_ARM64) && !defined(RPCS3_IOS)
+ 		ensure(::munmap(pointer, size) != -1);
+ 		ensure(::mmap(pointer, size, +prot,  MAP_ANON | MAP_PRIVATE | (can_be_jit ? MAP_JIT : 0), -1, 0) == pointer);
+ #else
+@@ -486,6 +486,40 @@ namespace utils
+ #endif
+ 	}
+ 
++#ifdef RPCS3_IOS
++	// iOS: POSIX shared memory may be refused by the app sandbox. Fall back to an unlinked file in
++	// the app's temporary directory; it is mapped MAP_SHARED exactly like a shm object.
++	static int ios_shared_memory_fd(const std::string& name)
++	{
++		int fd = ::shm_open(name.c_str(), O_RDWR | O_CREAT | O_EXCL, S_IWUSR | S_IRUSR);
++
++		if (fd >= 0)
++		{
++			::shm_unlink(name.c_str());
++			return fd;
++		}
++
++		if (errno == EMFILE)
++		{
++			fmt::throw_exception("Too many open files. Raise the limit and try again.");
++		}
++
++		const char* tmp = ::getenv("TMPDIR");
++		std::string path = tmp && *tmp ? tmp : "/tmp/";
++
++		if (path.back() != '/')
++		{
++			path += '/';
++		}
++
++		path += "rpcs3-mem-XXXXXX";
++		fd = ::mkstemp(path.data());
++		ensure(fd >= 0, "Cannot create a backing file for shared memory");
++		::unlink(path.c_str());
++		return fd;
++	}
++#endif
++
+ 	shm::shm(u64 size, u32 flags)
+ 		: m_flags(flags)
+ 		, m_size(utils::align(size, 0x10000))
+@@ -515,6 +549,12 @@ namespace utils
+ #else
+ 		const std::string name = "/rpcs3-mem-" + std::to_string(reinterpret_cast<u64>(this));
+ 
++#ifdef RPCS3_IOS
++		m_file = ios_shared_memory_fd(name);
++		ensure(::ftruncate(m_file, m_size) >= 0);
++		return;
++#endif
++
+ 		while ((m_file = ::shm_open(name.c_str(), O_RDWR | O_CREAT | O_EXCL, S_IWUSR | S_IRUSR)) == -1)
+ 		{
+ 			if (errno == EMFILE)
+@@ -739,6 +779,12 @@ namespace utils
+ #else
+ 			const std::string name = "/rpcs3-mem2-" + std::to_string(reinterpret_cast<u64>(this));
+ 
++#ifdef RPCS3_IOS
++			m_file = ios_shared_memory_fd(name);
++			ensure(::ftruncate(m_file, m_size) >= 0);
++			return;
++#endif
++
+ 			while ((m_file = ::shm_open(name.c_str(), O_RDWR | O_CREAT | O_EXCL, S_IWUSR | S_IRUSR)) == -1)
+ 			{
+ 				if (errno == EMFILE)

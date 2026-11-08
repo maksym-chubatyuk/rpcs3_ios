@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Raises the memory limit before iOS ends the app (about 6 GB on an 8 GB iPhone).
+	     Works with a free Apple ID. Extended virtual addressing is left out: free teams
+	     cannot use it, and the core's reservations fit the normal 63 GB map. -->
+	<key>com.apple.developer.kernel.increased-memory-limit</key>
+	<true/>
+</dict>
+</plist>

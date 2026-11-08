@@ -1,0 +1,38 @@
+Converts D24 depth to float exactly. A float division is relaxed to a reciprocal multiply on Apple GPUs, so depth >= 0.75 came back one unit high after a GPU round trip, corrupting data the texture cache flushed back to memory (black screen in Hyperdimension Neptunia mk2). Candidate for upstream.
+
+diff --git a/rpcs3/Emu/RSX/Program/GLSLSnippets/ShuffleBytes.glsl b/rpcs3/Emu/RSX/Program/GLSLSnippets/ShuffleBytes.glsl
+index 125802066..20f172936 100644
+--- a/rpcs3/Emu/RSX/Program/GLSLSnippets/ShuffleBytes.glsl
++++ b/rpcs3/Emu/RSX/Program/GLSLSnippets/ShuffleBytes.glsl
+@@ -12,7 +12,7 @@ layout(%set, binding=%loc, std430) buffer ssbo{ uint data[]; };
+ #define bswap_u16_u32(bits) (bits & 0xFFFF) << 16 | (bits & 0xFFFF0000) >> 16
+ 
+ // Depth format conversions
+-#define d24_to_f32(bits)             floatBitsToUint(float(bits) / 16777215.f)
++#define d24_to_f32(bits)             unorm24_to_f32_bits(bits)
+ #define f32_to_d24(bits)             f32_to_unorm24(uintBitsToFloat(bits))
+ #define d24f_to_f32(bits)            (bits << 7)
+ #define f32_to_d24f(bits)            (bits >> 7)
+@@ -26,6 +26,22 @@ uint linear_invocation_id()
+ 	return (gl_GlobalInvocationID.y * size_in_x) + gl_GlobalInvocationID.x;
+ }
+ 
++uint unorm24_to_f32_bits(const in uint value)
++{
++	// Correctly rounded value / 16777215, built from integers.
++	// A float division is not exact when the driver relaxes it to a reciprocal multiply (MoltenVK on Apple GPUs does),
++	// which pushes values >= 0.75 up by one unit so the D24 -> F32 -> D24 round trip comes back off by one,
++	// corrupting any memory the texture cache passes through a depth surface (e.g. fragment programs copied by the game).
++	// For 0 < d < 2^24 - 1 with p = msb(d), d / (2^24 - 1) = (d << (23 - p)) * 2^(p - 47) * (1 + 2^-24 + ...),
++	// which rounds to mantissa (d << (23 - p)) + 1 at exponent p - 24.
++	const uint d = value & 0xFFFFFFu;
++	if (d == 0u) return 0u;
++	if (d == 0xFFFFFFu) return 0x3F800000u;
++	const uint p = uint(findMSB(d));
++	const uint mantissa = (d << (23u - p)) + 1u;
++	return ((p + 103u) << 23) | (mantissa & 0x7FFFFFu);
++}
++
+ uint f32_to_unorm24(const in float value)
+ {
+ 	// Round to nearest.

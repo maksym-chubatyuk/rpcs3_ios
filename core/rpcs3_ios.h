@@ -1,0 +1,98 @@
+#pragma once
+
+// C interface between the iOS app (Swift) and the RPCS3 emulator core.
+//
+// The core is loaded with dlopen() only after the app has obtained its JIT pool (see
+// ios/jit_pool.hpp): its static initializers already emit code into that pool. The app passes
+// the pool to the core in the RPCS3_JIT_POOL environment variable before loading it.
+//
+// Unless noted otherwise, call these from the main thread.
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef void (*rpcs3_ios_log_fn)(int level, const char* message);
+typedef void (*rpcs3_ios_progress_fn)(void* ctx, uint32_t done, uint32_t total);
+typedef void (*rpcs3_ios_event_fn)(int event); // rpcs3_ios_event
+
+enum rpcs3_ios_event
+{
+	RPCS3_IOS_EVENT_READY = 1,
+	RPCS3_IOS_EVENT_RUN = 2,
+	RPCS3_IOS_EVENT_PAUSE = 3,
+	RPCS3_IOS_EVENT_RESUME = 4,
+	RPCS3_IOS_EVENT_STOP = 5,
+	RPCS3_IOS_EVENT_MISSING_FIRMWARE = 6,
+};
+
+// 1 if the core found a usable JIT pool. Nothing else works without one.
+int rpcs3_ios_jit_available(void);
+
+// Initialize the emulator (config, VFS, callbacks). `events` may be NULL. Returns 0 on success.
+int rpcs3_ios_initialize(rpcs3_ios_event_fn events);
+
+// Directory holding config.yml, dev_hdd0 and the other emulator folders (with trailing '/').
+const char* rpcs3_ios_emulator_dir(void);
+
+// Installed firmware version ("" when none). The string stays valid until the next call.
+const char* rpcs3_ios_firmware_version(void);
+
+// Install a PS3UPDAT.PUP. Blocking; call it from a background thread. Returns 0 on success,
+// otherwise a negative error code; `error` (may be NULL) receives a short description.
+int rpcs3_ios_install_firmware(const char* pup_path, rpcs3_ios_progress_fn progress, void* ctx, char* error, uint32_t error_size);
+
+// Install a .pkg (game, update or DLC). Blocking; call it from a background thread.
+int rpcs3_ios_install_pkg(const char* pkg_path);
+
+// The view the game renders into: a UIView whose layer is a CAMetalLayer. Sizes are in pixels.
+// Set it before booting; update the size when it changes.
+void rpcs3_ios_set_render_view(void* uiview, int32_t width, int32_t height, double refresh_rate);
+
+// Player 1's controller as the app sees it: the on-screen controls merged with any physical
+// controller. The core presents it to the game as an SDL virtual gamepad ("RPCS3 Virtual Pad").
+enum rpcs3_ios_pad_button
+{
+	RPCS3_IOS_PAD_CROSS = 1u << 0,
+	RPCS3_IOS_PAD_CIRCLE = 1u << 1,
+	RPCS3_IOS_PAD_SQUARE = 1u << 2,
+	RPCS3_IOS_PAD_TRIANGLE = 1u << 3,
+	RPCS3_IOS_PAD_L1 = 1u << 4,
+	RPCS3_IOS_PAD_R1 = 1u << 5,
+	RPCS3_IOS_PAD_L3 = 1u << 6,
+	RPCS3_IOS_PAD_R3 = 1u << 7,
+	RPCS3_IOS_PAD_SELECT = 1u << 8,
+	RPCS3_IOS_PAD_START = 1u << 9,
+	RPCS3_IOS_PAD_PS = 1u << 10,
+	RPCS3_IOS_PAD_UP = 1u << 11,
+	RPCS3_IOS_PAD_DOWN = 1u << 12,
+	RPCS3_IOS_PAD_LEFT = 1u << 13,
+	RPCS3_IOS_PAD_RIGHT = 1u << 14,
+};
+
+typedef struct rpcs3_ios_pad
+{
+	uint32_t buttons;          // rpcs3_ios_pad_button bits
+	float lx, ly, rx, ry;      // -1...1, +y is up
+	float l2, r2;              // 0...1
+} rpcs3_ios_pad;
+
+// Any thread. Cheap; call it whenever the state changes.
+void rpcs3_ios_set_pad(const rpcs3_ios_pad* pad);
+
+// Boot a game: a disc game folder, an EBOOT.BIN or SELF, or an ISO. Returns game_boot_result (0 = ok).
+int rpcs3_ios_boot(const char* path);
+
+// Emulation control.
+void rpcs3_ios_pause(void);
+void rpcs3_ios_resume(void);
+void rpcs3_ios_stop(void);
+
+// system_state: 0 stopped, 1 loading, 2 stopping, 3 running, 4 paused, 5 frozen, 6 ready, 7 starting.
+int rpcs3_ios_state(void);
+
+#ifdef __cplusplus
+}
+#endif

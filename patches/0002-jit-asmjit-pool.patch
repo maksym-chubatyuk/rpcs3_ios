@@ -1,0 +1,167 @@
+asmjit's runtime takes code memory from the iOS JIT pool and writes it through the pool's RW alias (core/include/ios/jit_pool.hpp).
+
+diff --git a/Utilities/JITASM.cpp b/Utilities/JITASM.cpp
+index 962f347bf..ea614626b 100644
+--- a/Utilities/JITASM.cpp
++++ b/Utilities/JITASM.cpp
+@@ -8,6 +8,7 @@
+ #include "util/asm.hpp"
+ #include "util/v128.hpp"
+ #include "util/simd.hpp"
++#include "ios/jit_pool.hpp"
+ 
+ #ifdef __linux__
+ #include <unistd.h>
+@@ -139,6 +140,32 @@ static atomic_t<u64> s_code_pos{0}, s_data_pos{0};
+ // Snapshot of code generated before main()
+ static std::vector<u8> s_code_init, s_data_init;
+ 
++#ifdef RPCS3_IOS
++// iOS: code comes from the debugger-prepared pool (written through its RW alias), data from
++// the RW arena next to it. Same contract as the desktop version below.
++static u8* add_pool_memory(utils::jit_pool::part part, usz size, usz align)
++{
++	if (!size && !align) [[unlikely]]
++	{
++		return utils::jit_pool::base(part);
++	}
++
++	if (!size && align == 1)
++	{
++		return utils::jit_pool::top(part);
++	}
++
++	u8* r = utils::jit_pool::alloc(part, size, align);
++
++	if (!r) [[unlikely]]
++	{
++		jit_log.error("Out of JIT pool memory (size=0x%x, align=0x%x, part=%u)", size, align, static_cast<u32>(part));
++	}
++
++	return r;
++}
++#endif
++
+ template <atomic_t<u64>& Ctr, uint Off, utils::protection Prot>
+ static u8* add_jit_memory(usz size, usz align)
+ {
+@@ -232,6 +259,9 @@ void* jit_runtime_base::_add(asmjit::CodeHolder* code, usz align) noexcept
+ 	auto p = ensure(this->_alloc(codeSize, align));
+ 	ensure(!code->relocateToBase(uptr(p)));
+ 
++	// Executable pool memory is written through its RW alias (identity elsewhere)
++	const auto w = utils::jit_pool::rw(p);
++
+ 	{
+ 		// We manage rw <-> rx transitions manually on Apple
+ 		// because it's easier to keep track of when and where we need to toggle W^X
+@@ -246,10 +276,11 @@ void* jit_runtime_base::_add(asmjit::CodeHolder* code, usz align) noexcept
+ 				fmt::throw_exception("CodeHolder section exceeds range: Section->offset: 0x%x, Section->bufferSize: 0x%x, alloted-memory=0x%x", section->offset(), section->bufferSize(), utils::align<usz>(codeSize, align));
+ 			}
+ 
+-			std::memcpy(p + section->offset(), section->data(), section->bufferSize());
++			std::memcpy(w + section->offset(), section->data(), section->bufferSize());
+ 		}
+ 	}
+ 
++	utils::jit_pool::flush(p, codeSize);
+ 	return p;
+ }
+ 
+@@ -273,6 +304,10 @@ u8* jit_runtime::alloc(usz size, usz align, bool exec) noexcept
+ 	std::lock_guard lock(s_alloc_lock);
+ #endif
+ 
++#ifdef RPCS3_IOS
++	return add_pool_memory(exec ? utils::jit_pool::part::rt_code : utils::jit_pool::part::rt_data, size, align);
++#endif
++
+ 	if (exec)
+ 	{
+ 		return add_jit_memory<s_code_pos, 0x0, utils::protection::wx>(size, align);
+@@ -285,6 +320,10 @@ u8* jit_runtime::alloc(usz size, usz align, bool exec) noexcept
+ 
+ u8* jit_runtime::peek(bool exec) noexcept
+ {
++#ifdef RPCS3_IOS
++	return add_pool_memory(exec ? utils::jit_pool::part::rt_code : utils::jit_pool::part::rt_data, 0, 1);
++#endif
++
+ 	if (exec)
+ 	{
+ 		return add_jit_memory<s_code_pos, 0x0, utils::protection::wx>(0, 1);
+@@ -303,14 +342,39 @@ void jit_runtime::initialize()
+ 	}
+ 
+ 	// Create code/data snapshot
++#ifdef RPCS3_IOS
++	s_code_init.resize(peek(true) - alloc(0, 0, true));
++	std::memcpy(s_code_init.data(), utils::jit_pool::rw(alloc(0, 0, true)), s_code_init.size());
++	s_data_init.resize(peek(false) - alloc(0, 0, false));
++	std::memcpy(s_data_init.data(), alloc(0, 0, false), s_data_init.size());
++	utils::jit_pool::report();
++#else
+ 	s_code_init.resize(s_code_pos & 0xffff'ffff);
+ 	std::memcpy(s_code_init.data(), alloc(0, 0, true), s_code_init.size());
+ 	s_data_init.resize(s_data_pos & 0xffff'ffff);
+ 	std::memcpy(s_data_init.data(), alloc(0, 0, false), s_data_init.size());
++#endif
+ }
+ 
+ void jit_runtime::finalize() noexcept
+ {
++#ifdef RPCS3_IOS
++	// Emulation stopped: every LLVM object and runtime allocation since initialize() is gone.
++	// The pool is never returned (the debugger that prepared it has detached), so it is reused.
++	utils::jit_pool::report();
++	utils::jit_pool::reset(utils::jit_pool::part::rt_code);
++	utils::jit_pool::reset(utils::jit_pool::part::rt_data);
++	utils::jit_pool::reset(utils::jit_pool::part::llvm_code);
++	utils::jit_pool::reset(utils::jit_pool::part::llvm_data);
++
++	{
++		u8* code = alloc(s_code_init.size(), 1, true);
++		std::memcpy(utils::jit_pool::rw(code), s_code_init.data(), s_code_init.size());
++		utils::jit_pool::flush(code, s_code_init.size());
++		std::memcpy(alloc(s_data_init.size(), 1, false), s_data_init.data(), s_data_init.size());
++	}
++	return;
++#endif
+ #ifdef __APPLE__
+ 	pthread_jit_write_protect_np(false);
+ #endif
+@@ -348,6 +412,16 @@ jit_runtime_base& asmjit::get_global_runtime()
+ 	{
+ 		custom_runtime() noexcept
+ 		{
++#ifdef RPCS3_IOS
++			m_pos.raw() = utils::jit_pool::alloc(utils::jit_pool::part::global_code, size, 0x4000);
++
++			if (!m_pos.raw())
++			{
++				fmt::throw_exception("No executable memory for the JIT: %s", utils::jit_pool::error());
++			}
++
++			m_max = m_pos + size;
++#else
+ 			ensure(m_pos.raw() = static_cast<uchar*>(utils::memory_reserve(size, true)));
+ 
+ 			// Initialize "end" pointer
+@@ -355,6 +429,7 @@ jit_runtime_base& asmjit::get_global_runtime()
+ 
+ 			// Make memory writable + executable
+ 			utils::memory_commit(m_pos, size, utils::protection::wx);
++#endif
+ 		}
+ 
+ 		uchar* _alloc(usz size, usz align) noexcept override
+@@ -399,7 +474,9 @@ uchar* asmjit::inline_runtime::_alloc(usz size, usz align) noexcept
+ 
+ asmjit::inline_runtime::~inline_runtime()
+ {
++#ifndef RPCS3_IOS
+ 	utils::memory_protect(m_data, m_size, utils::protection::rx);
++#endif
+ }
+ 
+ #if defined(ARCH_X64)

@@ -1,0 +1,165 @@
+Builds with the iOS SDK: headers and APIs macOS has and iOS lacks (raw disks, routing sockets, AppKit, HID exclusive mode), and input code without Qt. Candidate for upstream.
+
+diff --git a/Utilities/File.cpp b/Utilities/File.cpp
+index 8a61b7d9a..fb0df68bb 100644
+--- a/Utilities/File.cpp
++++ b/Utilities/File.cpp
+@@ -160,7 +160,9 @@ static fs::error to_error(DWORD e)
+ #include <copyfile.h>
+ #include <mach-o/dyld.h>
+ #include <limits.h>
++#ifndef RPCS3_IOS
+ #include <sys/disk.h>
++#endif
+ #include <sys/param.h>
+ #include <sys/mount.h>
+ #elif defined(__linux__) || defined(__sun)
+@@ -255,7 +257,7 @@ static u64 get_raw_device_size(int fd)
+ 	{
+ 		return size;
+ 	}
+-#elif defined(__APPLE__)
++#elif defined(__APPLE__) && !defined(RPCS3_IOS) // iOS: no raw disk access
+ 	u64 block_count = 0;
+ 	u32 block_size = 0;
+ 
+diff --git a/rpcs3/Emu/NP/np_handler.cpp b/rpcs3/Emu/NP/np_handler.cpp
+index f546a4a15..13eccb041 100644
+--- a/rpcs3/Emu/NP/np_handler.cpp
++++ b/rpcs3/Emu/NP/np_handler.cpp
+@@ -41,7 +41,9 @@
+ 
+ #if defined(__FreeBSD__) || defined(__APPLE__)
+ #include <net/if_dl.h>
++#ifndef RPCS3_IOS
+ #include <net/route.h>
++#endif
+ #include <sys/sysctl.h>
+ #endif
+ 
+@@ -759,7 +761,7 @@ namespace np
+ 			freeifaddrs(ifap);
+ 		}
+ 
+-#if defined(__FreeBSD__) || defined(__APPLE__)
++#if defined(__FreeBSD__) || (defined(__APPLE__) && !defined(RPCS3_IOS)) // iOS SDK has no routing socket headers
+ 		int mib[] = {CTL_NET, PF_ROUTE, 0, AF_INET, NET_RT_FLAGS, RTF_GATEWAY};
+ 		usz size = 0;
+ 
+diff --git a/rpcs3/Emu/RSX/VK/vkutils/metal_layer.mm b/rpcs3/Emu/RSX/VK/vkutils/metal_layer.mm
+index 5c593bc5b..72bf6a4cf 100644
+--- a/rpcs3/Emu/RSX/VK/vkutils/metal_layer.mm
++++ b/rpcs3/Emu/RSX/VK/vkutils/metal_layer.mm
+@@ -3,8 +3,16 @@
+ #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+ #pragma GCC diagnostic ignored "-Wmissing-declarations"
+ #import <Foundation/Foundation.h>
+-#import <AppKit/AppKit.h>
+ #import <QuartzCore/QuartzCore.h>
+ 
++#if TARGET_OS_IPHONE
++#import <UIKit/UIKit.h>
++
++// iOS: the display handle is a UIView whose layerClass is CAMetalLayer
++void* GetCAMetalLayerFromMetalView(void* view) { return (__bridge void*)((__bridge UIView*)view).layer; }
++#else
++#import <AppKit/AppKit.h>
++
+ void* GetCAMetalLayerFromMetalView(void* view) { return ((NSView*)view).layer; }
++#endif
+ #pragma GCC diagnostic pop
+diff --git a/rpcs3/Input/hid_instance.cpp b/rpcs3/Input/hid_instance.cpp
+index 18bf6cdce..2ea51869f 100644
+--- a/rpcs3/Input/hid_instance.cpp
++++ b/rpcs3/Input/hid_instance.cpp
+@@ -40,7 +40,7 @@ bool hid_instance::initialize()
+ 
+ 	hid_log.notice("Initializing HIDAPI ...");
+ 
+-#if defined(__APPLE__)
++#if defined(__APPLE__) && !defined(RPCS3_IOS)
+ 	int error_code = 0;
+ 	Emu.BlockingCallFromMainThread([&error_code]()
+ 	{
+diff --git a/rpcs3/Input/mouse_gyro_handler.cpp b/rpcs3/Input/mouse_gyro_handler.cpp
+index 6d8bafd64..6dced12a2 100644
+--- a/rpcs3/Input/mouse_gyro_handler.cpp
++++ b/rpcs3/Input/mouse_gyro_handler.cpp
+@@ -1,10 +1,12 @@
+ #include "stdafx.h"
+ #include "mouse_gyro_handler.h"
+ 
++#ifndef RPCS3_IOS
+ #include <QEvent>
+ #include <QMouseEvent>
+ #include <QWheelEvent>
+ #include <QWindow>
++#endif
+ 
+ #include <algorithm>
+ 
+@@ -62,6 +64,7 @@ void mouse_gyro_handler::set_gyro_y(s32 steps)
+ 	m_gyro_y = static_cast<u16>(std::clamp(m_gyro_y + steps, 0, DEFAULT_MOTION_Y * 2 - 1));
+ }
+ 
++#ifndef RPCS3_IOS
+ void mouse_gyro_handler::handle_event(QEvent* ev, const QWindow& win)
+ {
+ 	if (!m_enabled)
+@@ -127,6 +130,7 @@ void mouse_gyro_handler::handle_event(QEvent* ev, const QWindow& win)
+ 	}
+ 	}
+ }
++#endif // RPCS3_IOS
+ 
+ void mouse_gyro_handler::apply_gyro(const std::shared_ptr<Pad>& pad)
+ {
+diff --git a/rpcs3/Input/pad_thread.cpp b/rpcs3/Input/pad_thread.cpp
+index b76ff5d40..47312348c 100644
+--- a/rpcs3/Input/pad_thread.cpp
++++ b/rpcs3/Input/pad_thread.cpp
+@@ -15,7 +15,7 @@
+ #ifdef HAVE_SDL3
+ #include "sdl_pad_handler.h"
+ #endif
+-#ifndef ANDROID
++#if !defined(ANDROID) && !defined(RPCS3_IOS)
+ #include "keyboard_pad_handler.h"
+ #endif
+ #include "Emu/Io/Null/NullPadHandler.h"
+@@ -154,7 +154,7 @@ void pad_thread::Init()
+ 
+ 	input_log.trace("Using pad config:\n%s", g_cfg_input);
+ 
+-#ifndef ANDROID
++#if !defined(ANDROID) && !defined(RPCS3_IOS)
+ 	std::shared_ptr<keyboard_pad_handler> keyptr;
+ #endif
+ 
+@@ -177,7 +177,7 @@ void pad_thread::Init()
+ 		{
+ 			if (handler_type == pad_handler::keyboard)
+ 			{
+-#ifndef ANDROID
++#if !defined(ANDROID) && !defined(RPCS3_IOS)
+ 				keyptr = std::make_shared<keyboard_pad_handler>();
+ 				keyptr->moveToThread(static_cast<QThread*>(m_curthread));
+ 				keyptr->SetTargetWindow(static_cast<QWindow*>(m_curwindow));
+@@ -857,7 +857,7 @@ std::shared_ptr<PadHandlerBase> pad_thread::GetHandler(pad_handler type)
+ 	case pad_handler::null:
+ 		return std::make_shared<NullPadHandler>();
+ 	case pad_handler::keyboard:
+-#ifdef ANDROID
++#if defined(ANDROID) || defined(RPCS3_IOS)
+ 		return std::make_shared<NullPadHandler>();
+ #else
+ 		return std::make_shared<keyboard_pad_handler>();
+@@ -952,7 +952,7 @@ void pad_thread::set_target_window(void* window)
+ {
+ 	m_curwindow = window;
+ 
+-#ifndef ANDROID
++#if !defined(ANDROID) && !defined(RPCS3_IOS)
+ 	for (const auto& [type, handler] : m_handlers)
+ 	{
+ 		if (type == pad_handler::keyboard)

@@ -1,0 +1,13 @@
+# Outputs and local files
+/build/
+/logs/
+/backups/
+/rpcs3-src
+
+# Downloaded and built by the scripts (MoltenVK, FFmpeg); StikJIT is part of the repository
+/third_party/*
+!/third_party/StikJIT/
+
+xcuserdata/
+*.xcuserstate
+.DS_Store

@@ -1,0 +1,42 @@
+LLVM uses the iOS memory manager (core/jit_llvm_memory.cpp), which puts code in the JIT pool.
+
+diff --git a/Utilities/JITLLVM.cpp b/Utilities/JITLLVM.cpp
+index 521ca53bc..80b72b05c 100644
+--- a/Utilities/JITLLVM.cpp
++++ b/Utilities/JITLLVM.cpp
+@@ -56,6 +56,10 @@ LOG_CHANNEL(jit_log, "JIT");
+ #include "Emu/CPU/Backends/AArch64/AArch64Common.h"
+ #endif
+ 
++#ifdef RPCS3_IOS
++#include "ios/jit_llvm_memory.hpp"
++#endif
++
+ namespace
+ {
+ 	thread_local std::string* g_llvm_fatal_message = nullptr;
+@@ -728,6 +732,16 @@ jit_compiler::jit_compiler(const std::unordered_map<std::string, u64>& _link, st
+ 
+ 	std::unique_ptr<llvm::RTDyldMemoryManager> mem;
+ 
++#ifdef RPCS3_IOS
++	// iOS: code goes into the app's JIT pool (ios/core/jit_llvm_memory.cpp)
++	const bool runtime_memory = _link.empty() && !(flags & 0x1);
++	mem = ios_jit::make_llvm_memory_manager(runtime_memory, std::move(symbols_cement), make_null_function);
++
++	if (runtime_memory)
++	{
++		null_mod->setTargetTriple(llvm::Triple(jit_compiler::triple2()));
++	}
++#else
+ 	if (_link.empty())
+ 	{
+ 		// Auxiliary JIT (does not use custom memory manager, only writes the objects)
+@@ -745,6 +759,7 @@ jit_compiler::jit_compiler(const std::unordered_map<std::string, u64>& _link, st
+ 	{
+ 		mem = std::make_unique<MemoryManager1>(std::move(symbols_cement));
+ 	}
++#endif
+ 
+ 	std::vector<std::string> attributes;
+ 

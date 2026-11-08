@@ -1,0 +1,890 @@
+The SPU recompiler writes and patches code through the JIT pool's RW alias: on iOS executable memory is never writable at its own address.
+
+diff --git a/rpcs3/Emu/Cell/SPUCommonRecompiler.cpp b/rpcs3/Emu/Cell/SPUCommonRecompiler.cpp
+index d1e338b4d..edfa0f616 100644
+--- a/rpcs3/Emu/Cell/SPUCommonRecompiler.cpp
++++ b/rpcs3/Emu/Cell/SPUCommonRecompiler.cpp
+@@ -1,5 +1,6 @@
+ #include "stdafx.h"
+ #include "SPURecompiler.h"
++#include "ios/jit_pool.hpp"
+ 
+ #include "Emu/System.h"
+ #include "Emu/system_config.h"
+@@ -179,13 +180,13 @@ static u8* move_args_ghc_to_native(u8* raw)
+ 	// mov  rdx, rbp
+ 	// mov  r8,  r12
+ 	// mov  r9,  rbx
+-	std::memcpy(raw, "\x4C\x89\xE9\x48\x89\xEA\x4D\x89\xE0\x49\x89\xD9", 12);
++	std::memcpy(utils::jit_pool::rw(raw), "\x4C\x89\xE9\x48\x89\xEA\x4D\x89\xE0\x49\x89\xD9", 12);
+ #else
+ 	// mov  rdi, r13
+ 	// mov  rsi, rbp
+ 	// mov  rdx, r12
+ 	// mov  rcx, rbx
+-	std::memcpy(raw, "\x4C\x89\xEF\x48\x89\xEE\x4C\x89\xE2\x48\x89\xD9", 12);
++	std::memcpy(utils::jit_pool::rw(raw), "\x4C\x89\xEF\x48\x89\xEE\x4C\x89\xE2\x48\x89\xD9", 12);
+ #endif
+ 
+ 	return raw + 12;
+@@ -212,13 +213,13 @@ DECLARE(spu_runtime::tr_dispatch) = []
+ 	// Generate a special trampoline to spu_recompiler_base::dispatch with pause instruction
+ 	u8* const trptr = jit_runtime::alloc(32, 16);
+ 	u8* raw = move_args_ghc_to_native(trptr);
+-	*raw++ = 0xf3; // pause
+-	*raw++ = 0x90;
+-	*raw++ = 0xff; // jmp [rip]
+-	*raw++ = 0x25;
+-	std::memset(raw, 0, 4);
++	*utils::jit_pool::rw(raw++) = 0xf3; // pause
++	*utils::jit_pool::rw(raw++) = 0x90;
++	*utils::jit_pool::rw(raw++) = 0xff; // jmp [rip]
++	*utils::jit_pool::rw(raw++) = 0x25;
++	std::memset(utils::jit_pool::rw(raw), 0, 4);
+ 	const u64 target = reinterpret_cast<u64>(&spu_recompiler_base::dispatch);
+-	std::memcpy(raw + 4, &target, 8);
++	std::memcpy(utils::jit_pool::rw(raw + 4), &target, 8);
+ 	return reinterpret_cast<spu_function_t>(trptr);
+ #elif defined(ARCH_ARM64)
+ 	auto trptr = build_function_asm<spu_function_t>("tr_dispatch",
+@@ -240,11 +241,11 @@ DECLARE(spu_runtime::tr_branch) = []
+ 	// Generate a trampoline to spu_recompiler_base::branch
+ 	u8* const trptr = jit_runtime::alloc(32, 16);
+ 	u8* raw = move_args_ghc_to_native(trptr);
+-	*raw++ = 0xff; // jmp [rip]
+-	*raw++ = 0x25;
+-	std::memset(raw, 0, 4);
++	*utils::jit_pool::rw(raw++) = 0xff; // jmp [rip]
++	*utils::jit_pool::rw(raw++) = 0x25;
++	std::memset(utils::jit_pool::rw(raw), 0, 4);
+ 	const u64 target = reinterpret_cast<u64>(&spu_recompiler_base::branch);
+-	std::memcpy(raw + 4, &target, 8);
++	std::memcpy(utils::jit_pool::rw(raw + 4), &target, 8);
+ 	return reinterpret_cast<spu_function_t>(trptr);
+ 
+ #elif defined(ARCH_ARM64)
+@@ -265,11 +266,11 @@ DECLARE(spu_runtime::tr_interpreter) = []
+ #if defined(ARCH_X64)
+ 	u8* const trptr = jit_runtime::alloc(32, 16);
+ 	u8* raw = move_args_ghc_to_native(trptr);
+-	*raw++ = 0xff; // jmp [rip]
+-	*raw++ = 0x25;
+-	std::memset(raw, 0, 4);
++	*utils::jit_pool::rw(raw++) = 0xff; // jmp [rip]
++	*utils::jit_pool::rw(raw++) = 0x25;
++	std::memset(utils::jit_pool::rw(raw), 0, 4);
+ 	const u64 target = reinterpret_cast<u64>(&spu_recompiler_base::old_interpreter);
+-	std::memcpy(raw + 4, &target, 8);
++	std::memcpy(utils::jit_pool::rw(raw + 4), &target, 8);
+ 	return reinterpret_cast<spu_function_t>(trptr);
+ #elif defined(ARCH_ARM64)
+ 	auto trptr = build_function_asm<spu_function_t>("tr_interpreter",
+@@ -305,49 +306,49 @@ DECLARE(spu_runtime::tr_all) = []
+ 	u8* raw = trptr;
+ 
+ 	// Load PC: mov eax, [r13 + spu_thread::pc]
+-	*raw++ = 0x41;
+-	*raw++ = 0x8b;
+-	*raw++ = 0x45;
+-	*raw++ = ::narrow<s8>(::offset32(&spu_thread::pc));
++	*utils::jit_pool::rw(raw++) = 0x41;
++	*utils::jit_pool::rw(raw++) = 0x8b;
++	*utils::jit_pool::rw(raw++) = 0x45;
++	*utils::jit_pool::rw(raw++) = ::narrow<s8>(::offset32(&spu_thread::pc));
+ 
+ 	// Get LS address starting from PC: lea rcx, [rbp + rax]
+-	*raw++ = 0x48;
+-	*raw++ = 0x8d;
+-	*raw++ = 0x4c;
+-	*raw++ = 0x05;
+-	*raw++ = 0x00;
++	*utils::jit_pool::rw(raw++) = 0x48;
++	*utils::jit_pool::rw(raw++) = 0x8d;
++	*utils::jit_pool::rw(raw++) = 0x4c;
++	*utils::jit_pool::rw(raw++) = 0x05;
++	*utils::jit_pool::rw(raw++) = 0x00;
+ 
+ 	// mov eax, [rcx]
+-	*raw++ = 0x8b;
+-	*raw++ = 0x01;
++	*utils::jit_pool::rw(raw++) = 0x8b;
++	*utils::jit_pool::rw(raw++) = 0x01;
+ 
+ 	// shr eax, (32 - 20)
+-	*raw++ = 0xc1;
+-	*raw++ = 0xe8;
+-	*raw++ = 0x0c;
++	*utils::jit_pool::rw(raw++) = 0xc1;
++	*utils::jit_pool::rw(raw++) = 0xe8;
++	*utils::jit_pool::rw(raw++) = 0x0c;
+ 
+ 	// Load g_dispatcher to rdx
+-	*raw++ = 0x48;
+-	*raw++ = 0x8d;
+-	*raw++ = 0x15;
++	*utils::jit_pool::rw(raw++) = 0x48;
++	*utils::jit_pool::rw(raw++) = 0x8d;
++	*utils::jit_pool::rw(raw++) = 0x15;
+ 	const s32 r32 = ::narrow<s32>(reinterpret_cast<u64>(g_dispatcher) - reinterpret_cast<u64>(raw) - 4);
+-	std::memcpy(raw, &r32, 4);
++	std::memcpy(utils::jit_pool::rw(raw), &r32, 4);
+ 	raw += 4;
+ 
+ 	// Update block_hash (set zero): mov [r13 + spu_thread::m_block_hash], 0
+-	*raw++ = 0x49;
+-	*raw++ = 0xc7;
+-	*raw++ = 0x45;
+-	*raw++ = ::narrow<s8>(::offset32(&spu_thread::block_hash));
+-	*raw++ = 0x00;
+-	*raw++ = 0x00;
+-	*raw++ = 0x00;
+-	*raw++ = 0x00;
++	*utils::jit_pool::rw(raw++) = 0x49;
++	*utils::jit_pool::rw(raw++) = 0xc7;
++	*utils::jit_pool::rw(raw++) = 0x45;
++	*utils::jit_pool::rw(raw++) = ::narrow<s8>(::offset32(&spu_thread::block_hash));
++	*utils::jit_pool::rw(raw++) = 0x00;
++	*utils::jit_pool::rw(raw++) = 0x00;
++	*utils::jit_pool::rw(raw++) = 0x00;
++	*utils::jit_pool::rw(raw++) = 0x00;
+ 
+ 	// jmp [rdx + rax * 8]
+-	*raw++ = 0xff;
+-	*raw++ = 0x24;
+-	*raw++ = 0xc2;
++	*utils::jit_pool::rw(raw++) = 0xff;
++	*utils::jit_pool::rw(raw++) = 0x24;
++	*utils::jit_pool::rw(raw++) = 0xc2;
+ 
+ 	return reinterpret_cast<spu_function_t>(trptr);
+ 
+@@ -1483,30 +1484,30 @@ spu_function_t spu_runtime::rebuild_ubertrampoline(u32 id_inst)
+ 			const u64 taddr = target ? reinterpret_cast<u64>(target) : reinterpret_cast<u64>(tr_dispatch);
+ 
+ 			// ldr x9, #16 -> ldr x9, taddr
+-			*raw++ = 0x89;
+-			*raw++ = 0x00;
+-			*raw++ = 0x00;
+-			*raw++ = 0x58;
++			*utils::jit_pool::rw(raw++) = 0x89;
++			*utils::jit_pool::rw(raw++) = 0x00;
++			*utils::jit_pool::rw(raw++) = 0x00;
++			*utils::jit_pool::rw(raw++) = 0x58;
+ 
+ 			if (op == asmjit::arm::CondCode::kAlways)
+ 			{
+ 				// br x9
+-				*raw++ = 0x20;
+-				*raw++ = 0x01;
+-				*raw++ = 0x1F;
+-				*raw++ = 0xD6;
++				*utils::jit_pool::rw(raw++) = 0x20;
++				*utils::jit_pool::rw(raw++) = 0x01;
++				*utils::jit_pool::rw(raw++) = 0x1F;
++				*utils::jit_pool::rw(raw++) = 0xD6;
+ 
+ 				// nop
+-				*raw++ = 0x1F;
+-				*raw++ = 0x20;
+-				*raw++ = 0x03;
+-				*raw++ = 0xD5;
++				*utils::jit_pool::rw(raw++) = 0x1F;
++				*utils::jit_pool::rw(raw++) = 0x20;
++				*utils::jit_pool::rw(raw++) = 0x03;
++				*utils::jit_pool::rw(raw++) = 0xD5;
+ 
+ 				// nop
+-				*raw++ = 0x1F;
+-				*raw++ = 0x20;
+-				*raw++ = 0x03;
+-				*raw++ = 0xD5;
++				*utils::jit_pool::rw(raw++) = 0x1F;
++				*utils::jit_pool::rw(raw++) = 0x20;
++				*utils::jit_pool::rw(raw++) = 0x03;
++				*utils::jit_pool::rw(raw++) = 0xD5;
+ 			}
+ 			else
+ 			{
+@@ -1514,34 +1515,34 @@ spu_function_t spu_runtime::rebuild_ubertrampoline(u32 id_inst)
+ 				switch (op)
+ 				{
+ 				case asmjit::arm::CondCode::kUnsignedLT:
+-					*raw++ = 0x43;
++					*utils::jit_pool::rw(raw++) = 0x43;
+ 					break;
+ 				case asmjit::arm::CondCode::kUnsignedGT:
+-					*raw++ = 0x48;
++					*utils::jit_pool::rw(raw++) = 0x48;
+ 					break;
+ 				default:
+ 					asm("brk 0x42");
+ 				}
+ 
+-				*raw++ = 0x00;
+-				*raw++ = 0x00;
+-				*raw++ = 0x54;
++				*utils::jit_pool::rw(raw++) = 0x00;
++				*utils::jit_pool::rw(raw++) = 0x00;
++				*utils::jit_pool::rw(raw++) = 0x54;
+ 
+ 				// b #16 -> b cont
+-				*raw++ = 0x04;
+-				*raw++ = 0x00;
+-				*raw++ = 0x00;
+-				*raw++ = 0x14;
++				*utils::jit_pool::rw(raw++) = 0x04;
++				*utils::jit_pool::rw(raw++) = 0x00;
++				*utils::jit_pool::rw(raw++) = 0x00;
++				*utils::jit_pool::rw(raw++) = 0x14;
+ 
+ 				// do_branch: br x9
+-				*raw++ = 0x20;
+-				*raw++ = 0x01;
+-				*raw++ = 0x1f;
+-				*raw++ = 0xD6;
++				*utils::jit_pool::rw(raw++) = 0x20;
++				*utils::jit_pool::rw(raw++) = 0x01;
++				*utils::jit_pool::rw(raw++) = 0x1f;
++				*utils::jit_pool::rw(raw++) = 0xD6;
+ 			}
+ 
+ 			// taddr
+-			std::memcpy(raw, &taddr, 8);
++			std::memcpy(utils::jit_pool::rw(raw), &taddr, 8);
+ 			raw += 8;
+ 
+ 			// cont: next instruction
+@@ -1574,15 +1575,15 @@ spu_function_t spu_runtime::rebuild_ubertrampoline(u32 id_inst)
+ 			if (op != 0xe9)
+ 			{
+ 				// First jcc byte
+-				*raw++ = 0x0f;
++				*utils::jit_pool::rw(raw++) = 0x0f;
+ 				ensure((op >> 4) == 0x8);
+ 			}
+ 
+-			*raw++ = op;
++			*utils::jit_pool::rw(raw++) = op;
+ 
+ 			const s32 r32 = static_cast<s32>(rel);
+ 
+-			std::memcpy(raw, &r32, 4);
++			std::memcpy(utils::jit_pool::rw(raw), &r32, 4);
+ 			raw += 4;
+ 		};
+ #endif
+@@ -1668,12 +1669,12 @@ spu_function_t spu_runtime::rebuild_ubertrampoline(u32 id_inst)
+ #if defined(ARCH_X64)
+ 				// Patch rel32 linking it to the current location if necessary
+ 				const s32 r32 = ::narrow<s32>(raw - w.rel32);
+-				std::memcpy(w.rel32 - 4, &r32, 4);
++				std::memcpy(utils::jit_pool::rw(w.rel32 - 4), &r32, 4);
+ #elif defined(ARCH_ARM64)
+ 				//	Rewrite jump address
+ 				{
+ 					u64 raw64 = reinterpret_cast<u64>(raw);
+-					memcpy(w.rel32 - 8, &raw64, 8);
++					memcpy(utils::jit_pool::rw(w.rel32 - 8), &raw64, 8);
+ 				}
+ #else
+ #error "Unimplemented"
+@@ -1750,39 +1751,39 @@ spu_function_t spu_runtime::rebuild_ubertrampoline(u32 id_inst)
+ #if defined(ARCH_X64)
+ 				if (cmp_lsa < 0x80)
+ 				{
+-					*raw++ = 0x8b;
+-					*raw++ = 0x41;
+-					*raw++ = ::narrow<s8>(cmp_lsa);
++					*utils::jit_pool::rw(raw++) = 0x8b;
++					*utils::jit_pool::rw(raw++) = 0x41;
++					*utils::jit_pool::rw(raw++) = ::narrow<s8>(cmp_lsa);
+ 				}
+ 				else
+ 				{
+-					*raw++ = 0x8b;
+-					*raw++ = 0x81;
+-					std::memcpy(raw, &cmp_lsa, 4);
++					*utils::jit_pool::rw(raw++) = 0x8b;
++					*utils::jit_pool::rw(raw++) = 0x81;
++					std::memcpy(utils::jit_pool::rw(raw), &cmp_lsa, 4);
+ 					raw += 4;
+ 				}
+ #elif defined(ARCH_ARM64)
+ 				// ldr w9, #8
+-				*raw++ = 0x49;
+-				*raw++ = 0x00;
+-				*raw++ = 0x00;
+-				*raw++ = 0x18;
++				*utils::jit_pool::rw(raw++) = 0x49;
++				*utils::jit_pool::rw(raw++) = 0x00;
++				*utils::jit_pool::rw(raw++) = 0x00;
++				*utils::jit_pool::rw(raw++) = 0x18;
+ 
+ 				// b #8
+-				*raw++ = 0x02;
+-				*raw++ = 0x00;
+-				*raw++ = 0x00;
+-				*raw++ = 0x14;
++				*utils::jit_pool::rw(raw++) = 0x02;
++				*utils::jit_pool::rw(raw++) = 0x00;
++				*utils::jit_pool::rw(raw++) = 0x00;
++				*utils::jit_pool::rw(raw++) = 0x14;
+ 
+ 				// cmp_lsa
+-				std::memcpy(raw, &cmp_lsa, 4);
++				std::memcpy(utils::jit_pool::rw(raw), &cmp_lsa, 4);
+ 				raw += 4;
+ 
+ 				// ldr w1, [x7, x9]
+-				*raw++ = 0xE1;
+-				*raw++ = 0x68;
+-				*raw++ = 0x69;
+-				*raw++ = 0xB8;
++				*utils::jit_pool::rw(raw++) = 0xE1;
++				*utils::jit_pool::rw(raw++) = 0x68;
++				*utils::jit_pool::rw(raw++) = 0x69;
++				*utils::jit_pool::rw(raw++) = 0xB8;
+ #else
+ #error "Unimplemented"
+ #endif
+@@ -1790,31 +1791,31 @@ spu_function_t spu_runtime::rebuild_ubertrampoline(u32 id_inst)
+ 
+ 			// Emit comparison: cmp eax, imm32
+ #if defined(ARCH_X64)
+-			*raw++ = 0x3d;
+-			std::memcpy(raw, &x, 4);
++			*utils::jit_pool::rw(raw++) = 0x3d;
++			std::memcpy(utils::jit_pool::rw(raw), &x, 4);
+ 			raw += 4;
+ #elif defined(ARCH_ARM64)
+ 			// ldr w9, #8
+-			*raw++ = 0x49;
+-			*raw++ = 0x00;
+-			*raw++ = 0x00;
+-			*raw++ = 0x18;
++			*utils::jit_pool::rw(raw++) = 0x49;
++			*utils::jit_pool::rw(raw++) = 0x00;
++			*utils::jit_pool::rw(raw++) = 0x00;
++			*utils::jit_pool::rw(raw++) = 0x18;
+ 
+ 			// b #8
+-			*raw++ = 0x02;
+-			*raw++ = 0x00;
+-			*raw++ = 0x00;
+-			*raw++ = 0x14;
++			*utils::jit_pool::rw(raw++) = 0x02;
++			*utils::jit_pool::rw(raw++) = 0x00;
++			*utils::jit_pool::rw(raw++) = 0x00;
++			*utils::jit_pool::rw(raw++) = 0x14;
+ 
+ 			// x
+-			std::memcpy(raw, &x, 4);
++			std::memcpy(utils::jit_pool::rw(raw), &x, 4);
+ 			raw += 4;
+ 
+ 			// cmp w1, w9
+-			*raw++ = 0x3f;
+-			*raw++ = 0x00;
+-			*raw++ = 0x09;
+-			*raw++ = 0x6B;
++			*utils::jit_pool::rw(raw++) = 0x3f;
++			*utils::jit_pool::rw(raw++) = 0x00;
++			*utils::jit_pool::rw(raw++) = 0x09;
++			*utils::jit_pool::rw(raw++) = 0x6B;
+ #else
+ #error "Unimplemented"
+ #endif
+@@ -1949,6 +1950,7 @@ spu_function_t spu_runtime::rebuild_ubertrampoline(u32 id_inst)
+ 		}
+ 
+ 		workload.clear();
++		utils::jit_pool::flush(wxptr, raw - wxptr);
+ 		result = reinterpret_cast<spu_function_t>(reinterpret_cast<u64>(wxptr));
+ 
+ 		std::string fname;
+@@ -2043,7 +2045,7 @@ spu_function_t spu_runtime::make_branch_patchpoint(u16 data) const
+ 	raw[8] = 0xe9;
+ 	// Compute the distance
+ 	const s64 rel = reinterpret_cast<u64>(tr_branch) - reinterpret_cast<u64>(raw + 8) - 5;
+-	std::memcpy(raw + 9, &rel, 4);
++	std::memcpy(utils::jit_pool::rw(raw + 9), &rel, 4);
+ 	raw[13] = 0xcc;
+ 	raw[14] = data >> 8;
+ 	raw[15] = data & 0xff;
+@@ -2058,38 +2060,38 @@ spu_function_t spu_runtime::make_branch_patchpoint(u16 data) const
+ 	u8* raw = patch_fn;
+ 
+ 	// adr x21, #16
+-	*raw++ = 0x95;
+-	*raw++ = 0x00;
+-	*raw++ = 0x00;
+-	*raw++ = 0x10;
++	*utils::jit_pool::rw(raw++) = 0x95;
++	*utils::jit_pool::rw(raw++) = 0x00;
++	*utils::jit_pool::rw(raw++) = 0x00;
++	*utils::jit_pool::rw(raw++) = 0x10;
+ 
+ 	// nop x3
+ 	for (int i = 0; i < 3; i++)
+ 	{
+-		*raw++ = 0x1F;
+-		*raw++ = 0x20;
+-		*raw++ = 0x03;
+-		*raw++ = 0xD5;
++		*utils::jit_pool::rw(raw++) = 0x1F;
++		*utils::jit_pool::rw(raw++) = 0x20;
++		*utils::jit_pool::rw(raw++) = 0x03;
++		*utils::jit_pool::rw(raw++) = 0xD5;
+ 	}
+ 
+ 	// ldr x9, #8
+-	*raw++ = 0x49;
+-	*raw++ = 0x00;
+-	*raw++ = 0x00;
+-	*raw++ = 0x58;
++	*utils::jit_pool::rw(raw++) = 0x49;
++	*utils::jit_pool::rw(raw++) = 0x00;
++	*utils::jit_pool::rw(raw++) = 0x00;
++	*utils::jit_pool::rw(raw++) = 0x58;
+ 
+ 	// br x9
+-	*raw++ = 0x20;
+-	*raw++ = 0x01;
+-	*raw++ = 0x1F;
+-	*raw++ = 0xD6;
++	*utils::jit_pool::rw(raw++) = 0x20;
++	*utils::jit_pool::rw(raw++) = 0x01;
++	*utils::jit_pool::rw(raw++) = 0x1F;
++	*utils::jit_pool::rw(raw++) = 0xD6;
+ 
+ 	u64 branch_target = reinterpret_cast<u64>(tr_branch);
+-	std::memcpy(raw, &branch_target, 8);
++	std::memcpy(utils::jit_pool::rw(raw), &branch_target, 8);
+ 	raw += 8;
+ 
+-	*raw++ = static_cast<u8>(data >> 8);
+-	*raw++ = static_cast<u8>(data & 0xff);
++	*utils::jit_pool::rw(raw++) = static_cast<u8>(data >> 8);
++	*utils::jit_pool::rw(raw++) = static_cast<u8>(data & 0xff);
+ 
+ #if defined(__APPLE__)
+ 	pthread_jit_write_protect_np(true);
+@@ -2099,6 +2101,7 @@ spu_function_t spu_runtime::make_branch_patchpoint(u16 data) const
+ 	asm("ISB");
+ 	asm("DSB ISH");
+ 
++	utils::jit_pool::flush(patch_fn, 36);
+ 	return reinterpret_cast<spu_function_t>(patch_fn);
+ #else
+ #error "Unimplemented"
+@@ -2158,7 +2161,8 @@ void spu_recompiler_base::dispatch(spu_thread& spu, void*, u8* rip)
+ #if defined(__APPLE__)
+ 		pthread_jit_write_protect_np(false);
+ #endif
+-		atomic_storage<u128>::release(*reinterpret_cast<u128*>(rip), result);
++		atomic_storage<u128>::release(*reinterpret_cast<u128*>(utils::jit_pool::rw(rip)), result);
++		utils::jit_pool::flush(rip, 16);
+ #if defined(__APPLE__)
+ 		pthread_jit_write_protect_np(true);
+ #endif
+@@ -2230,7 +2234,7 @@ void spu_recompiler_base::branch(spu_thread& spu, void*, u8* rip)
+ #if defined(ARCH_X64)
+ 	if (const u32 ls_off = ((rip[6] << 8) | rip[7]) * 4)
+ #elif defined(ARCH_ARM64)
+-	if (const u32 ls_off = ((rip[16] << 8) | rip[17]) * 4) // See branch_patchpoint `data`
++	if (const u32 ls_off = ((utils::jit_pool::rw(rip)[16] << 8) | utils::jit_pool::rw(rip)[17]) * 4) // See branch_patchpoint `data`
+ #else
+ #error "Unimplemented"
+ #endif
+@@ -2306,7 +2310,8 @@ void spu_recompiler_base::branch(spu_thread& spu, void*, u8* rip)
+ #if defined(__APPLE__)
+ 	pthread_jit_write_protect_np(false);
+ #endif
+-	atomic_storage<u128>::release(*reinterpret_cast<u128*>(rip), result);
++	atomic_storage<u128>::release(*reinterpret_cast<u128*>(utils::jit_pool::rw(rip)), result);
++		utils::jit_pool::flush(rip, 16);
+ #if defined(__APPLE__)
+ 	pthread_jit_write_protect_np(true);
+ #endif
+@@ -9419,39 +9424,39 @@ struct spu_fast : public spu_recompiler_base
+ 		u8* raw = result;
+ 
+ 		// 8-byte intruction for patching (long NOP)
+-		*raw++ = 0x0f;
+-		*raw++ = 0x1f;
+-		*raw++ = 0x84;
+-		*raw++ = 0;
+-		*raw++ = 0;
+-		*raw++ = 0;
+-		*raw++ = 0;
+-		*raw++ = 0;
++		*utils::jit_pool::rw(raw++) = 0x0f;
++		*utils::jit_pool::rw(raw++) = 0x1f;
++		*utils::jit_pool::rw(raw++) = 0x84;
++		*utils::jit_pool::rw(raw++) = 0;
++		*utils::jit_pool::rw(raw++) = 0;
++		*utils::jit_pool::rw(raw++) = 0;
++		*utils::jit_pool::rw(raw++) = 0;
++		*utils::jit_pool::rw(raw++) = 0;
+ 
+ 		// mov rax, m_hash_start
+-		*raw++ = 0x48;
+-		*raw++ = 0xb8;
+-		std::memcpy(raw, &m_hash_start, sizeof(m_hash_start));
++		*utils::jit_pool::rw(raw++) = 0x48;
++		*utils::jit_pool::rw(raw++) = 0xb8;
++		std::memcpy(utils::jit_pool::rw(raw), &m_hash_start, sizeof(m_hash_start));
+ 		raw += 8;
+ 
+ 		// Update block_hash: mov [r13 + spu_thread::m_block_hash], rax
+-		*raw++ = 0x49;
+-		*raw++ = 0x89;
+-		*raw++ = 0x45;
+-		*raw++ = ::narrow<s8>(::offset32(&spu_thread::block_hash));
++		*utils::jit_pool::rw(raw++) = 0x49;
++		*utils::jit_pool::rw(raw++) = 0x89;
++		*utils::jit_pool::rw(raw++) = 0x45;
++		*utils::jit_pool::rw(raw++) = ::narrow<s8>(::offset32(&spu_thread::block_hash));
+ 
+ 		// Load PC: mov eax, [r13 + spu_thread::pc]
+-		*raw++ = 0x41;
+-		*raw++ = 0x8b;
+-		*raw++ = 0x45;
+-		*raw++ = ::narrow<s8>(::offset32(&spu_thread::pc));
++		*utils::jit_pool::rw(raw++) = 0x41;
++		*utils::jit_pool::rw(raw++) = 0x8b;
++		*utils::jit_pool::rw(raw++) = 0x45;
++		*utils::jit_pool::rw(raw++) = ::narrow<s8>(::offset32(&spu_thread::pc));
+ 
+ 		// Get LS address starting from PC: lea rcx, [rbp + rax]
+-		*raw++ = 0x48;
+-		*raw++ = 0x8d;
+-		*raw++ = 0x4c;
+-		*raw++ = 0x05;
+-		*raw++ = 0x00;
++		*utils::jit_pool::rw(raw++) = 0x48;
++		*utils::jit_pool::rw(raw++) = 0x8d;
++		*utils::jit_pool::rw(raw++) = 0x4c;
++		*utils::jit_pool::rw(raw++) = 0x05;
++		*utils::jit_pool::rw(raw++) = 0x00;
+ 
+ 		// Verification (slow)
+ 		for (u32 i = 0; i < func.data.size(); i++)
+@@ -9462,73 +9467,73 @@ struct spu_fast : public spu_recompiler_base
+ 			}
+ 
+ 			// cmp dword ptr [rcx + off], opc
+-			*raw++ = 0x81;
+-			*raw++ = 0xb9;
++			*utils::jit_pool::rw(raw++) = 0x81;
++			*utils::jit_pool::rw(raw++) = 0xb9;
+ 			const u32 off = i * 4;
+ 			const u32 opc = func.data[i];
+-			std::memcpy(raw + 0, &off, 4);
+-			std::memcpy(raw + 4, &opc, 4);
++			std::memcpy(utils::jit_pool::rw(raw + 0), &off, 4);
++			std::memcpy(utils::jit_pool::rw(raw + 4), &opc, 4);
+ 			raw += 8;
+ 
+ 			// jne tr_dispatch
+ 			const s64 rel = reinterpret_cast<u64>(spu_runtime::tr_dispatch) - reinterpret_cast<u64>(raw) - 6;
+-			*raw++ = 0x0f;
+-			*raw++ = 0x85;
+-			std::memcpy(raw + 0, &rel, 4);
++			*utils::jit_pool::rw(raw++) = 0x0f;
++			*utils::jit_pool::rw(raw++) = 0x85;
++			std::memcpy(utils::jit_pool::rw(raw + 0), &rel, 4);
+ 			raw += 4;
+ 		}
+ 
+ 		// trap
+-		//*raw++ = 0xcc;
++		//*utils::jit_pool::rw(raw++) = 0xcc;
+ 
+ 		// Secondary prologue: sub rsp,0x28
+-		*raw++ = 0x48;
+-		*raw++ = 0x83;
+-		*raw++ = 0xec;
+-		*raw++ = 0x28;
++		*utils::jit_pool::rw(raw++) = 0x48;
++		*utils::jit_pool::rw(raw++) = 0x83;
++		*utils::jit_pool::rw(raw++) = 0xec;
++		*utils::jit_pool::rw(raw++) = 0x28;
+ 
+ 		// Fix args: xchg r13,rbp
+-		*raw++ = 0x49;
+-		*raw++ = 0x87;
+-		*raw++ = 0xed;
++		*utils::jit_pool::rw(raw++) = 0x49;
++		*utils::jit_pool::rw(raw++) = 0x87;
++		*utils::jit_pool::rw(raw++) = 0xed;
+ 
+ 		// mov r12d, eax
+-		*raw++ = 0x41;
+-		*raw++ = 0x89;
+-		*raw++ = 0xc4;
++		*utils::jit_pool::rw(raw++) = 0x41;
++		*utils::jit_pool::rw(raw++) = 0x89;
++		*utils::jit_pool::rw(raw++) = 0xc4;
+ 
+ 		// mov esi, 0x7f0
+-		*raw++ = 0xbe;
+-		*raw++ = 0xf0;
+-		*raw++ = 0x07;
+-		*raw++ = 0x00;
+-		*raw++ = 0x00;
++		*utils::jit_pool::rw(raw++) = 0xbe;
++		*utils::jit_pool::rw(raw++) = 0xf0;
++		*utils::jit_pool::rw(raw++) = 0x07;
++		*utils::jit_pool::rw(raw++) = 0x00;
++		*utils::jit_pool::rw(raw++) = 0x00;
+ 
+ 		// lea rdi, [rbp + spu_thread::gpr]
+-		*raw++ = 0x48;
+-		*raw++ = 0x8d;
+-		*raw++ = 0x7d;
+-		*raw++ = ::narrow<s8>(::offset32(&spu_thread::gpr));
++		*utils::jit_pool::rw(raw++) = 0x48;
++		*utils::jit_pool::rw(raw++) = 0x8d;
++		*utils::jit_pool::rw(raw++) = 0x7d;
++		*utils::jit_pool::rw(raw++) = ::narrow<s8>(::offset32(&spu_thread::gpr));
+ 
+ 		// Save base pc: mov [rbp + spu_thread::base_pc], eax
+-		*raw++ = 0x89;
+-		*raw++ = 0x45;
+-		*raw++ = ::narrow<s8>(::offset32(&spu_thread::base_pc));
++		*utils::jit_pool::rw(raw++) = 0x89;
++		*utils::jit_pool::rw(raw++) = 0x45;
++		*utils::jit_pool::rw(raw++) = ::narrow<s8>(::offset32(&spu_thread::base_pc));
+ 
+ 		// inc block_counter
+-		*raw++ = 0x48;
+-		*raw++ = 0xff;
+-		*raw++ = 0x85;
++		*utils::jit_pool::rw(raw++) = 0x48;
++		*utils::jit_pool::rw(raw++) = 0xff;
++		*utils::jit_pool::rw(raw++) = 0x85;
+ 		const u32 blc_off = ::offset32(&spu_thread::block_counter);
+-		std::memcpy(raw, &blc_off, 4);
++		std::memcpy(utils::jit_pool::rw(raw), &blc_off, 4);
+ 		raw += 4;
+ 
+ 		// lea r14, [local epilogue]
+-		*raw++ = 0x4c;
+-		*raw++ = 0x8d;
+-		*raw++ = 0x35;
++		*utils::jit_pool::rw(raw++) = 0x4c;
++		*utils::jit_pool::rw(raw++) = 0x8d;
++		*utils::jit_pool::rw(raw++) = 0x35;
+ 		const u32 epi_off = ::size32(func.data) * 16;
+-		std::memcpy(raw, &epi_off, 4);
++		std::memcpy(utils::jit_pool::rw(raw), &epi_off, 4);
+ 		raw += 4;
+ 
+ 		// Instructions (each instruction occupies fixed number of bytes)
+@@ -9539,20 +9544,20 @@ struct spu_fast : public spu_recompiler_base
+ 			if (!func.data[i])
+ 			{
+ 				// Save pc: mov [rbp + spu_thread::pc], r12d
+-				*raw++ = 0x44;
+-				*raw++ = 0x89;
+-				*raw++ = 0x65;
+-				*raw++ = ::narrow<s8>(::offset32(&spu_thread::pc));
++				*utils::jit_pool::rw(raw++) = 0x44;
++				*utils::jit_pool::rw(raw++) = 0x89;
++				*utils::jit_pool::rw(raw++) = 0x65;
++				*utils::jit_pool::rw(raw++) = ::narrow<s8>(::offset32(&spu_thread::pc));
+ 
+ 				// Epilogue: add rsp,0x28
+-				*raw++ = 0x48;
+-				*raw++ = 0x83;
+-				*raw++ = 0xc4;
+-				*raw++ = 0x28;
++				*utils::jit_pool::rw(raw++) = 0x48;
++				*utils::jit_pool::rw(raw++) = 0x83;
++				*utils::jit_pool::rw(raw++) = 0xc4;
++				*utils::jit_pool::rw(raw++) = 0x28;
+ 
+ 				// ret (TODO)
+-				*raw++ = 0xc3;
+-				std::memset(raw, 0xcc, 16 - 9);
++				*utils::jit_pool::rw(raw++) = 0xc3;
++				std::memset(utils::jit_pool::rw(raw), 0xcc, 16 - 9);
+ 				raw += 16 - 9;
+ 				continue;
+ 			}
+@@ -9571,22 +9576,22 @@ struct spu_fast : public spu_recompiler_base
+ 
+ 				if (0 && target >= m_pos && target < m_pos + m_size)
+ 				{
+-					*raw++ = type == spu_itype::BRHZ || type == spu_itype::BRHNZ ? 0x66 : 0x90;
+-					*raw++ = 0x83;
+-					*raw++ = 0xbd;
++					*utils::jit_pool::rw(raw++) = type == spu_itype::BRHZ || type == spu_itype::BRHNZ ? 0x66 : 0x90;
++					*utils::jit_pool::rw(raw++) = 0x83;
++					*utils::jit_pool::rw(raw++) = 0xbd;
+ 					const u32 off = ::offset32(&spu_thread::gpr, op.rt) + 12;
+-					std::memcpy(raw, &off, 4);
++					std::memcpy(utils::jit_pool::rw(raw), &off, 4);
+ 					raw += 4;
+-					*raw++ = 0x00;
++					*utils::jit_pool::rw(raw++) = 0x00;
+ 
+-					*raw++ = 0x0f;
+-					*raw++ = type == spu_itype::BRZ || type == spu_itype::BRHZ ? 0x84 : 0x85;
++					*utils::jit_pool::rw(raw++) = 0x0f;
++					*utils::jit_pool::rw(raw++) = type == spu_itype::BRZ || type == spu_itype::BRHZ ? 0x84 : 0x85;
+ 					const u32 dif = (target - (pos + 4)) / 4 * 16 + 2;
+-					std::memcpy(raw, &dif, 4);
++					std::memcpy(utils::jit_pool::rw(raw), &dif, 4);
+ 					raw += 4;
+ 
+-					*raw++ = 0x66;
+-					*raw++ = 0x90;
++					*utils::jit_pool::rw(raw++) = 0x66;
++					*utils::jit_pool::rw(raw++) = 0x90;
+ 					break;
+ 				}
+ 
+@@ -9595,20 +9600,20 @@ struct spu_fast : public spu_recompiler_base
+ 			default:
+ 			{
+ 				// Ballast: mov r15d, pos
+-				*raw++ = 0x41;
+-				*raw++ = 0xbf;
+-				std::memcpy(raw, &pos, 4);
++				*utils::jit_pool::rw(raw++) = 0x41;
++				*utils::jit_pool::rw(raw++) = 0xbf;
++				std::memcpy(utils::jit_pool::rw(raw), &pos, 4);
+ 				raw += 4;
+ 
+ 				// mov ebx, opc
+-				*raw++ = 0xbb;
+-				std::memcpy(raw, &op, 4);
++				*utils::jit_pool::rw(raw++) = 0xbb;
++				std::memcpy(utils::jit_pool::rw(raw), &op, 4);
+ 				raw += 4;
+ 
+ 				// call spu_* (specially built interpreter function)
+ 				const s64 rel = spu_runtime::g_interpreter_table[static_cast<usz>(type)] - reinterpret_cast<u64>(raw) - 5;
+-				*raw++ = 0xe8;
+-				std::memcpy(raw, &rel, 4);
++				*utils::jit_pool::rw(raw++) = 0xe8;
++				std::memcpy(utils::jit_pool::rw(raw), &rel, 4);
+ 				raw += 4;
+ 				break;
+ 			}
+@@ -9618,72 +9623,72 @@ struct spu_fast : public spu_recompiler_base
+ 		// Local dispatcher/epilogue: fix stack after branch instruction, then dispatch or return
+ 
+ 		// add rsp, 8
+-		*raw++ = 0x48;
+-		*raw++ = 0x83;
+-		*raw++ = 0xc4;
+-		*raw++ = 0x08;
++		*utils::jit_pool::rw(raw++) = 0x48;
++		*utils::jit_pool::rw(raw++) = 0x83;
++		*utils::jit_pool::rw(raw++) = 0xc4;
++		*utils::jit_pool::rw(raw++) = 0x08;
+ 
+ 		// and rsp, -16
+-		*raw++ = 0x48;
+-		*raw++ = 0x83;
+-		*raw++ = 0xe4;
+-		*raw++ = 0xf0;
++		*utils::jit_pool::rw(raw++) = 0x48;
++		*utils::jit_pool::rw(raw++) = 0x83;
++		*utils::jit_pool::rw(raw++) = 0xe4;
++		*utils::jit_pool::rw(raw++) = 0xf0;
+ 
+ 		// lea rax, [r12 - size]
+-		*raw++ = 0x49;
+-		*raw++ = 0x8d;
+-		*raw++ = 0x84;
+-		*raw++ = 0x24;
++		*utils::jit_pool::rw(raw++) = 0x49;
++		*utils::jit_pool::rw(raw++) = 0x8d;
++		*utils::jit_pool::rw(raw++) = 0x84;
++		*utils::jit_pool::rw(raw++) = 0x24;
+ 		const u32 msz = 0u - m_size;
+-		std::memcpy(raw, &msz, 4);
++		std::memcpy(utils::jit_pool::rw(raw), &msz, 4);
+ 		raw += 4;
+ 
+ 		// sub eax, [rbp + spu_thread::base_pc]
+-		*raw++ = 0x2b;
+-		*raw++ = 0x45;
+-		*raw++ = ::narrow<s8>(::offset32(&spu_thread::base_pc));
++		*utils::jit_pool::rw(raw++) = 0x2b;
++		*utils::jit_pool::rw(raw++) = 0x45;
++		*utils::jit_pool::rw(raw++) = ::narrow<s8>(::offset32(&spu_thread::base_pc));
+ 
+ 		// cmp eax, (0 - size)
+-		*raw++ = 0x3d;
+-		std::memcpy(raw, &msz, 4);
++		*utils::jit_pool::rw(raw++) = 0x3d;
++		std::memcpy(utils::jit_pool::rw(raw), &msz, 4);
+ 		raw += 4;
+ 
+ 		// jb epilogue
+-		*raw++ = 0x72;
+-		*raw++ = +12;
++		*utils::jit_pool::rw(raw++) = 0x72;
++		*utils::jit_pool::rw(raw++) = +12;
+ 
+ 		// movsxd rax, eax
+-		*raw++ = 0x48;
+-		*raw++ = 0x63;
+-		*raw++ = 0xc0;
++		*utils::jit_pool::rw(raw++) = 0x48;
++		*utils::jit_pool::rw(raw++) = 0x63;
++		*utils::jit_pool::rw(raw++) = 0xc0;
+ 
+ 		// shl rax, 2
+-		*raw++ = 0x48;
+-		*raw++ = 0xc1;
+-		*raw++ = 0xe0;
+-		*raw++ = 0x02;
++		*utils::jit_pool::rw(raw++) = 0x48;
++		*utils::jit_pool::rw(raw++) = 0xc1;
++		*utils::jit_pool::rw(raw++) = 0xe0;
++		*utils::jit_pool::rw(raw++) = 0x02;
+ 
+ 		// add rax, r14
+-		*raw++ = 0x4c;
+-		*raw++ = 0x01;
+-		*raw++ = 0xf0;
++		*utils::jit_pool::rw(raw++) = 0x4c;
++		*utils::jit_pool::rw(raw++) = 0x01;
++		*utils::jit_pool::rw(raw++) = 0xf0;
+ 
+ 		// jmp rax
+-		*raw++ = 0xff;
+-		*raw++ = 0xe0;
++		*utils::jit_pool::rw(raw++) = 0xff;
++		*utils::jit_pool::rw(raw++) = 0xe0;
+ 
+ 		// Save pc: mov [rbp + spu_thread::pc], r12d
+-		*raw++ = 0x44;
+-		*raw++ = 0x89;
+-		*raw++ = 0x65;
+-		*raw++ = ::narrow<s8>(::offset32(&spu_thread::pc));
++		*utils::jit_pool::rw(raw++) = 0x44;
++		*utils::jit_pool::rw(raw++) = 0x89;
++		*utils::jit_pool::rw(raw++) = 0x65;
++		*utils::jit_pool::rw(raw++) = ::narrow<s8>(::offset32(&spu_thread::pc));
+ 
+ 		// Epilogue: add rsp,0x28 ; ret
+-		*raw++ = 0x48;
+-		*raw++ = 0x83;
+-		*raw++ = 0xc4;
+-		*raw++ = 0x28;
+-		*raw++ = 0xc3;
++		*utils::jit_pool::rw(raw++) = 0x48;
++		*utils::jit_pool::rw(raw++) = 0x83;
++		*utils::jit_pool::rw(raw++) = 0xc4;
++		*utils::jit_pool::rw(raw++) = 0x28;
++		*utils::jit_pool::rw(raw++) = 0xc3;
+ 
+ 		const auto fn = reinterpret_cast<spu_function_t>(result);
+ 

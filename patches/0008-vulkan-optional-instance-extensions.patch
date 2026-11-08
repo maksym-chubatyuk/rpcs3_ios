@@ -1,0 +1,64 @@
+Requests portability enumeration and properties2 only when the Vulkan implementation offers them (MoltenVK linked directly does not list them), and logs why vkCreateInstance failed. Candidate for upstream.
+
+diff --git a/rpcs3/Emu/RSX/VK/vkutils/instance.cpp b/rpcs3/Emu/RSX/VK/vkutils/instance.cpp
+index e59c24948..145d01f66 100644
+--- a/rpcs3/Emu/RSX/VK/vkutils/instance.cpp
++++ b/rpcs3/Emu/RSX/VK/vkutils/instance.cpp
+@@ -126,8 +126,15 @@ namespace vk
+ 			}
+ 
+ #ifdef __APPLE__
+-			extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+-			extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
++			// Portability enumeration is the loader's; MoltenVK linked directly (iOS) may not list it
++			if (support.is_supported(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME))
++			{
++				extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
++			}
++			if (support.is_supported(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
++			{
++				extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
++			}
+ 			if (support.is_supported(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME))
+ 			{
+ 				extensions.push_back(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME);
+@@ -195,8 +202,11 @@ namespace vk
+ 		else
+ 		{
+ 			extensions_loaded = true;
+-			extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+-			extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
++			supported_extensions support(supported_extensions::instance);
++			if (support.is_supported(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME))
++				extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
++			if (support.is_supported(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
++				extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+ 		}
+ #endif
+ 
+@@ -214,7 +224,10 @@ namespace vk
+ #endif
+ 		instance_info.pNext = next_info;
+ #ifdef __APPLE__
+-		instance_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
++		if (std::find_if(extensions.begin(), extensions.end(), [](const char* e) { return std::string_view(e) == VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME; }) != extensions.end())
++		{
++			instance_info.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
++		}
+ #endif
+ 
+ 		if (VkResult result = vkCreateInstance(&instance_info, nullptr, &m_instance); result != VK_SUCCESS)
+@@ -224,6 +237,13 @@ namespace vk
+ 				rsx_log.fatal("Could not initialize layer VK_LAYER_KHRONOS_validation");
+ 			}
+ 
++			std::string requested;
++			for (const char* e : extensions)
++			{
++				fmt::append(requested, "%s%s", requested.empty() ? "" : ", ", e);
++			}
++
++			rsx_log.error("vkCreateInstance failed: VkResult %d (extensions: %s)", static_cast<s32>(result), requested);
+ 			return false;
+ 		}
+ 

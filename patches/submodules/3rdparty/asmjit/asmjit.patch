@@ -1,0 +1,16 @@
+asmjit includes OSCacheControl.h (sys_icache_invalidate) only for macOS; iOS needs it too.
+
+diff --git a/src/asmjit/core/virtmem.cpp b/src/asmjit/core/virtmem.cpp
+index ab4f589..ad2947b 100644
+--- a/src/asmjit/core/virtmem.cpp
++++ b/src/asmjit/core/virtmem.cpp
+@@ -63,8 +63,8 @@
+     #include <TargetConditionals.h>
+     #if TARGET_OS_OSX
+       #include <sys/utsname.h>
+-      #include <libkern/OSCacheControl.h> // sys_icache_invalidate().
+     #endif
++    #include <libkern/OSCacheControl.h> // sys_icache_invalidate() (iOS too).
+     // Older SDK doesn't define `MAP_JIT`.
+     #ifndef MAP_JIT
+       #define MAP_JIT 0x800

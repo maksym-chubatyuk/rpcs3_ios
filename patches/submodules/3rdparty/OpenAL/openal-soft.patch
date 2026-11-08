@@ -1,0 +1,20 @@
+OpenAL Soft replaces the global aligned operator new on macOS before 10.13. iOS defines MAC_OS_X_VERSION_MIN_REQUIRED too (with a small value), so it did there as well, and aligned allocations under 8 bytes then failed, LLVM's among them. Limited to macOS.
+
+diff --git a/common/almalloc.cpp b/common/almalloc.cpp
+index 68b5b63..a8754c4 100644
+--- a/common/almalloc.cpp
++++ b/common/almalloc.cpp
+@@ -3,8 +3,12 @@
+ 
+ #if defined(__APPLE__)
+ #include <AvailabilityMacros.h>
++#include <TargetConditionals.h>
+ 
+-#if defined(MAC_OS_X_VERSION_MIN_REQUIRED) && MAC_OS_X_VERSION_MIN_REQUIRED < 101300
++/* Only for macOS before 10.13, which lacks aligned new. iOS defines MAC_OS_X_VERSION_MIN_REQUIRED
++ * too, with a small value; replacing the global aligned new there broke every aligned
++ * allocation below 8 bytes (posix_memalign rejects them), LLVM's among them. */
++#if TARGET_OS_OSX && defined(MAC_OS_X_VERSION_MIN_REQUIRED) && MAC_OS_X_VERSION_MIN_REQUIRED < 101300
+ 
+ #include <stdlib.h>
+ 
