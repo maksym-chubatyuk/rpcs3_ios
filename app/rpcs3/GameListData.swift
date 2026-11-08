@@ -164,8 +164,7 @@ enum PlayHistory {
     static func key(for game: Game) -> String { game.titleID ?? game.id }
 
     static func timePlayed(_ seconds: Int) -> String {
-        guard seconds > 0 else { return "Never" }
-        if seconds < 60 { return "\(seconds) s" }
+        if seconds < 60 { return seconds > 0 ? "\(seconds) s" : "–" }
         return Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes], width: .abbreviated))
     }
 }

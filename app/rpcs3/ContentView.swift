@@ -84,12 +84,6 @@ struct ContentView: View {
         return ascending ? list : list.reversed()
     }
 
-    /// What the toolbar's Play starts: the game played last
-    private var lastPlayed: Game? {
-        emulator.games.max { (history[PlayHistory.key(for: $0)]?.lastPlayed ?? .distantPast) < (history[PlayHistory.key(for: $1)]?.lastPlayed ?? .distantPast) }
-            .flatMap { history[PlayHistory.key(for: $0)] == nil ? nil : $0 }
-    }
-
     var body: some View {
         NavigationStack {
             GeometryReader { geo in
@@ -177,6 +171,16 @@ struct ContentView: View {
             }
             history = PlayHistory.all()
         }
+        // Saved every minute too, so a crash or a kill loses at most that
+        .task(id: playing?.id) {
+            while playing != nil, !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                if let game = playing?.game, let start = started, !Task.isCancelled {
+                    PlayHistory.stopped(game, after: Date.now.timeIntervalSince(start))
+                    started = .now
+                }
+            }
+        }
         .fullScreenCover(item: $playing) { request in
             GameScreen(request: request) { playing = nil }
         }
@@ -250,7 +254,7 @@ struct ContentView: View {
                 if wide {
                     // Landscape: one row, like desktop's toolbar
                     HStack(spacing: 10) {
-                        tools.frame(width: 400)
+                        tools.frame(width: 345)
                         slider(width: 80)
                         search.frame(minWidth: 160)
                     }
@@ -283,9 +287,6 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             ToolButton("Refresh", "arrow.clockwise") { refresh() }
-            ToolButton("Play", "play.fill", enabled: lastPlayed != nil && canPlay) {
-                if let lastPlayed { play(BootRequest(game: lastPlayed)) }
-            }
             ToolButton("Config", "switch.2") { settingsFor = SettingsTarget(gameID: nil, title: nil) }
             ToolButton("Pads", "gamecontroller.fill") { managing = .pads }
             ToolButton("RPCN", "network") { managing = .rpcn }

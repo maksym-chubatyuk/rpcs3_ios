@@ -21,9 +21,9 @@ Tick an item off when it works; note what went wrong otherwise.
 - [ ] Long press: every item of the menu works (Game Controls and Patches open as sheets).
 - [ ] Landscape shows the table: tapping a column header sorts by it (again: reverse); long press on the header hides and shows columns, and they stay after a restart.
 - [ ] The icon size slider and search (by name or serial).
-- [ ] Last Played and Time Played fill in after playing a game; the toolbar's Play then starts it.
+- [ ] Last Played and Time Played fill in after playing a game.
 - [ ] Compatibility fills in on the first start with internet; Refresh updates the list (pull down works too).
-- [ ] Toolbar: Open's items, Config, Pads, RPCN and Manage's items open the right screens.
+- [ ] Toolbar: Open's items, Refresh, Config, Pads, RPCN and Manage's items do what they say.
 - [ ] The setup panel shows while JIT is off or the firmware is missing, and goes away once both are done.
 
 ## Installing packages

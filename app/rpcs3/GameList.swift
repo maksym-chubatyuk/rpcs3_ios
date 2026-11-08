@@ -154,7 +154,8 @@ struct GameListRow: View {
                 }
                 .font(.caption)
                 if let history = entry.history {
-                    Text("\(history.lastPlayed.formatted(.relative(presentation: .named))) · \(entry.timePlayed) played")
+                    Text(history.seconds < 60 ? history.lastPlayed.formatted(.relative(presentation: .named))
+                         : "\(history.lastPlayed.formatted(.relative(presentation: .named))) · \(entry.timePlayed) played")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
