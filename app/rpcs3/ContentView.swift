@@ -10,6 +10,8 @@ struct ContentView: View {
     @State private var playing: BootRequest?
     @State private var settingsFor: SettingsTarget?
     @State private var detailsFor: Game?
+    @State private var managing: Manager?
+    @State private var userName = ""
     @Environment(\.openURL) private var openURL
 
     /// Whose settings are open: the global ones, or a game's own.
@@ -17,6 +19,12 @@ struct ContentView: View {
         let gameID: String?
         let title: String?
         var id: String { gameID ?? "" }
+    }
+
+    /// The console's data: its users, and the logged-in user's saves and trophies.
+    enum Manager: String, Identifiable {
+        case saves, trophies, users
+        var id: Self { self }
     }
 
     /// What the Files picker is open for.
@@ -58,6 +66,18 @@ struct ContentView: View {
                 if emulator.coreReady {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Settings", systemImage: "gearshape") { settingsFor = SettingsTarget(gameID: nil, title: nil) }
+                    }
+                    ToolbarItem(placement: .topBarLeading) {
+                        Menu {
+                            Section(userName.isEmpty ? "User" : "Logged in as \(userName)") {
+                                Button("Save Data", systemImage: "externaldrive") { managing = .saves }
+                                Button("Trophies", systemImage: "trophy") { managing = .trophies }
+                                Button("Users", systemImage: "person.2") { managing = .users }
+                            }
+                        } label: {
+                            Label("User", systemImage: "person.crop.circle")
+                        }
+                        .onAppear { userName = UserList.load().activeUser?.name ?? "" }
                     }
                 }
                 if emulator.coreReady {
@@ -104,6 +124,20 @@ struct ContentView: View {
             GameDetailView(game: game) { request in
                 // After the sheet has gone, so the game screen can come up
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { playing = request }
+            }
+        }
+        .sheet(item: $managing, onDismiss: { userName = UserList.load().activeUser?.name ?? "" }) { manager in
+            NavigationStack {
+                Group {
+                    switch manager {
+                    case .saves: SaveDataView()
+                    case .trophies: TrophyGamesView()
+                    case .users: UsersView()
+                    }
+                }
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) { Button("Done") { managing = nil } }
+                }
             }
         }
         .sheet(item: $settingsFor) { target in

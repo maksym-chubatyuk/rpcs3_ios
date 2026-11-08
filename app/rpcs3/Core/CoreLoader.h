@@ -65,6 +65,19 @@ int core_patch_import(const char* path, char* message, size_t message_size);
 char* core_controls(const char* game);
 int core_control_set(const char* game, int player, const char* path, const char* value, char* error, size_t error_size);
 
+// Users, save data and trophies (see rpcs3_ios_users in core/rpcs3_ios.h)
+char* core_users(void);
+int core_user_create(const char* name, char* message, size_t message_size);
+int core_user_rename(const char* user, const char* name, char* message, size_t message_size);
+int core_user_remove(const char* user, char* message, size_t message_size);
+int core_user_login(const char* user, char* message, size_t message_size);
+char* core_saves(const char* serial);
+int core_save_remove(const char* dir);
+char* core_trophy_games(void);
+char* core_trophies(const char* communication_id);
+int core_trophy_set_earned(const char* communication_id, int trophy, int earned);
+int core_trophy_game_remove(const char* communication_id);
+
 #ifdef __cplusplus
 }
 #endif

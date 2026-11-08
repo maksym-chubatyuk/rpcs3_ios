@@ -5,6 +5,7 @@
 #include "rpcs3_ios.h"
 
 #include "ios/jit_pool.hpp"
+#include "ios/userdata.hpp"
 #include "util/sysinfo.hpp"
 #include "Utilities/JIT.h"
 #include "Utilities/File.h"
@@ -791,7 +792,7 @@ extern "C" int rpcs3_ios_initialize(rpcs3_ios_event_fn events)
 
 	Emu.SetHasGui(true);
 	Emu.SetHeadless(false);
-	Emu.SetUsr("00000001");
+	Emu.SetUsr(ios_userdata::saved_user());
 	Emu.Init();
 
 	use_bundled_icons();

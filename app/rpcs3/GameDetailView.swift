@@ -229,8 +229,20 @@ struct GameDetailView: View {
             Section("Data") {
                 storageRow("Savestates", size: data.savestatesSize, item: "savestates",
                            note: "Every savestate of this game is deleted.")
-                storageRow("Save Data", size: data.saveData, item: "savedata",
-                           note: "The game's saves (its progress) are deleted for good.")
+                NavigationLink {
+                    SaveDataView(serial: game.titleID, gameTitle: game.title)
+                        .onDisappear(perform: reload)
+                } label: {
+                    LabeledContent("Save Data", value: data.saveData == 0 ? "None" : data.saveData.formatted(.byteCount(style: .file)))
+                }
+                .disabled(game.titleID == nil)
+                if let trophies = game.trophyIDs.first {
+                    NavigationLink {
+                        TrophyListView(communicationID: trophies, title: game.title)
+                    } label: {
+                        Text("Trophies")
+                    }
+                }
                 storageRow("Updates and DLC", size: data.installedData, item: "installed",
                            note: "Installed updates and downloadable content are deleted; install them again from their PKG files.")
             }

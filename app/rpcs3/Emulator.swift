@@ -297,6 +297,34 @@ final class Emulator {
             removeData("input", of: game)
             log("controls test: after removing, own \(ControlsStore(gameID: id).gameHasOwn)")
         }
+        // RPCS3_USERDATA_TEST=1: lists users, saves and trophies; creates, renames, logs into and deletes a user
+        if env["RPCS3_USERDATA_TEST"] != nil {
+            let users = UserList.load()
+            log("userdata test: active \(users.active), users \(users.users.map { "\($0.id) \($0.name)" })")
+            let saves = CoreCall.decode(SaveList.self, core_saves(nil))
+            log("userdata test: savedata dir \(saves?.dir ?? "?"), \(saves?.saves.count ?? -1) saves: \(saves?.saves.prefix(3).map { "\($0.dir) '\($0.title)' \($0.size) icon \(!$0.icon.isEmpty)" } ?? [])")
+            let trophyGames = TrophyGame.all()
+            log("userdata test: \(trophyGames.count) trophy sets: \(trophyGames.map { "\($0.id) '\($0.name)' \($0.earned)/\($0.total) icon \(!$0.icon.isEmpty)" })")
+            if let set = trophyGames.first {
+                let list = CoreCall.decode([Trophy].self, core_trophies(set.id)) ?? []
+                log("userdata test: \(list.count) trophies, first \(list.first.map { "\($0.id) '\($0.name)' \($0.grade) hidden \($0.hidden) earned \($0.earned) icon \(!$0.icon.isEmpty)" } ?? "none")")
+            }
+            if let game = games.first { log("userdata test: \(game.title) trophy sets in the game: \(game.trophyIDs)") }
+            let bad = CoreCall.message { core_user_create("x", $0, $1) }
+            log("userdata test: bad name -> \(bad ?? "accepted!")")
+            let created = CoreCall.message { core_user_create("Tester_1", $0, $1) }
+            let added = UserList.load().users.first { $0.name == "Tester_1" }
+            log("userdata test: create -> \(created ?? "ok"), id \(added?.id ?? "none")")
+            if let added {
+                let renamed = CoreCall.message { core_user_rename(added.id, "Tester-2", $0, $1) }
+                let login = CoreCall.message { core_user_login(added.id, $0, $1) }
+                let removeActive = CoreCall.message { core_user_remove(added.id, $0, $1) }
+                log("userdata test: rename -> \(renamed ?? "ok"), login -> \(login ?? "ok"), active \(UserList.load().active), remove active -> \(removeActive ?? "accepted!"), saves now \(CoreCall.decode(SaveList.self, core_saves(nil))?.dir ?? "?")")
+                let back = CoreCall.message { core_user_login(users.active, $0, $1) }
+                let removed = CoreCall.message { core_user_remove(added.id, $0, $1) }
+                log("userdata test: back -> \(back ?? "ok"), active \(UserList.load().active), remove -> \(removed ?? "ok"), users \(UserList.load().users.count)")
+            }
+        }
         // RPCS3_REMOVE_DATA=<item>: removes that item (GameData) of the first game, then reports what is left
         if let item = env["RPCS3_REMOVE_DATA"], let game = games.first, let before = gameData(game) {
             let ok = removeData(item, of: game)

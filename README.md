@@ -114,6 +114,16 @@ connected to (player 1 is normally the on-screen controls together with the firs
 button mapping, sticks, triggers, vibration, pressure-sensitive buttons and the analog limiter. A game
 gets its own controls from its first change, starting from the global ones.
 
+## Users, save data and trophies
+
+The person icon in the library opens the console's **users** (each has their own saves and trophies;
+the one logged in is remembered), the logged-in user's **save data** and their **trophies**. Saves can
+be deleted, exported to the Files app as their folders and imported from there, for example a save
+from desktop RPCS3 (`dev_hdd0/home/00000001/savedata/<folder>`). A game's page shows its own saves
+and trophies. `core/userdata.cpp` mirrors desktop's user, save data and trophy managers.
+
+What still has to be checked by hand on a phone is listed in [TESTING.md](TESTING.md).
+
 ## Updating RPCS3
 
 ```sh

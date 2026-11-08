@@ -49,7 +49,7 @@ import json, os
 env = {"RPCS3_JIT_POOL_MB": os.environ.get("POOL_MB", "1024")}
 if os.environ.get("AUTO_FIRMWARE"): env["RPCS3_AUTO_FIRMWARE"] = os.environ["AUTO_FIRMWARE"]
 if os.environ.get("AUTO_BOOT"): env["RPCS3_AUTO_BOOT"] = os.environ["AUTO_BOOT"]
-for name in ("STDERR", "PERF_OVERLAY", "DUMP_AFTER", "SCREENSHOT_EVERY", "PS_AFTER", "SETTINGS_SELFTEST", "AUTO_BOOT_MODE", "BUILD_CACHE", "REMOVE_DATA", "PATCH_TEST", "CONTROLS_TEST"):
+for name in ("STDERR", "PERF_OVERLAY", "DUMP_AFTER", "SCREENSHOT_EVERY", "PS_AFTER", "SETTINGS_SELFTEST", "AUTO_BOOT_MODE", "BUILD_CACHE", "REMOVE_DATA", "PATCH_TEST", "CONTROLS_TEST", "USERDATA_TEST"):
     if os.environ.get(name): env["RPCS3_" + name] = os.environ[name]
 if os.environ.get("AUTO_BOOT_DELAY"): env["RPCS3_AUTO_BOOT_DELAY"] = os.environ["AUTO_BOOT_DELAY"]
 print(json.dumps(env))

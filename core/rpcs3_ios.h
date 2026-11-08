@@ -8,6 +8,7 @@
 //
 // Unless noted otherwise, call these from the main thread.
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -139,6 +140,35 @@ int rpcs3_ios_patch_import(const char* path, char* message, size_t message_size)
 char* rpcs3_ios_controls(const char* game);
 // Sets one entry of a player (0-6). Setting "Handler" also gives the player that handler's defaults.
 int rpcs3_ios_control_set(const char* game, int player, const char* path, const char* value, char* error, size_t error_size);
+
+// Users (core/userdata.cpp), in dev_hdd0/home, as desktop's user manager keeps them. Messages say
+// what went wrong. {"active": id, "users": [{"id": "00000001", "name"}]}, to free with rpcs3_ios_free.
+char* rpcs3_ios_users(void);
+// A name has 3 to 16 letters, digits, '_' or '-'. 0 on success, else -1.
+int rpcs3_ios_user_create(const char* name, char* message, size_t message_size);
+int rpcs3_ios_user_rename(const char* id, const char* name, char* message, size_t message_size);
+// Not the logged-in user.
+int rpcs3_ios_user_remove(const char* id, char* message, size_t message_size);
+// While no game runs. Remembered for the next start.
+int rpcs3_ios_user_login(const char* id, char* message, size_t message_size);
+
+// Save data of the logged-in user; serial: NULL or "" for all, or a game's (the directories named after it).
+// {"dir": savedata directory, "saves": [{"dir", "title", "subtitle", "details", "listParam",
+//  "size": bytes, "modified": Unix time, "icon": path or ""}]}, to free with rpcs3_ios_free.
+char* rpcs3_ios_saves(const char* serial);
+// Deletes one save directory. 0 on success.
+int rpcs3_ios_save_remove(const char* dir);
+
+// Trophies of the logged-in user, by communication ID (NPWR00000_00). To free with rpcs3_ios_free:
+// [{"id", "name", "icon", "total", "earned", "platinum"|"gold"|"silver"|"bronze": [earned, total]}]
+char* rpcs3_ios_trophy_games(void);
+// [{"id": number, "name", "detail", "grade": "platinum|gold|silver|bronze", "hidden", "earned",
+//   "time": Unix time or 0, "icon": path or "", "group": "" for the base game, or the add-on's name}]
+char* rpcs3_ios_trophies(const char* communication_id);
+// As desktop's trophy manager: marks a trophy earned (now) or not. While no game runs. 0 on success.
+int rpcs3_ios_trophy_set_earned(const char* communication_id, int trophy_id, int earned);
+// Removes a game's trophy data. While no game runs. 0 on success.
+int rpcs3_ios_trophy_game_remove(const char* communication_id);
 
 // Settings (core/settings.cpp). game: NULL or "" for the global settings (config.yml), or a title ID
 // for that game's own settings, which RPCS3 applies over the global ones when it boots.

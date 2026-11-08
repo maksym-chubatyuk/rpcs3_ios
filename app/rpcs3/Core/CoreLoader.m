@@ -37,6 +37,17 @@ static struct
 	int (*patch_import)(const char*, char*, size_t);
 	char* (*controls)(const char*);
 	int (*control_set)(const char*, int, const char*, const char*, char*, size_t);
+	char* (*users)(void);
+	int (*user_create)(const char*, char*, size_t);
+	int (*user_rename)(const char*, const char*, char*, size_t);
+	int (*user_remove)(const char*, char*, size_t);
+	int (*user_login)(const char*, char*, size_t);
+	char* (*saves)(const char*);
+	int (*save_remove)(const char*);
+	char* (*trophy_games)(void);
+	char* (*trophies)(const char*);
+	int (*trophy_set_earned)(const char*, int, int);
+	int (*trophy_game_remove)(const char*);
 } g_core;
 
 static bool g_loaded;
@@ -105,6 +116,17 @@ bool core_load(char* error, size_t error_size)
 	RESOLVE(patch_import, "rpcs3_ios_patch_import");
 	RESOLVE(controls, "rpcs3_ios_controls");
 	RESOLVE(control_set, "rpcs3_ios_control_set");
+	RESOLVE(users, "rpcs3_ios_users");
+	RESOLVE(user_create, "rpcs3_ios_user_create");
+	RESOLVE(user_rename, "rpcs3_ios_user_rename");
+	RESOLVE(user_remove, "rpcs3_ios_user_remove");
+	RESOLVE(user_login, "rpcs3_ios_user_login");
+	RESOLVE(saves, "rpcs3_ios_saves");
+	RESOLVE(save_remove, "rpcs3_ios_save_remove");
+	RESOLVE(trophy_games, "rpcs3_ios_trophy_games");
+	RESOLVE(trophies, "rpcs3_ios_trophies");
+	RESOLVE(trophy_set_earned, "rpcs3_ios_trophy_set_earned");
+	RESOLVE(trophy_game_remove, "rpcs3_ios_trophy_game_remove");
 #undef RESOLVE
 
 	g_loaded = true;
@@ -185,3 +207,15 @@ int core_control_set(const char* game, int player, const char* path, const char*
 {
 	return g_loaded ? g_core.control_set(game, player, path, value, error, error_size) : -100;
 }
+
+char* core_users(void) { return g_loaded ? g_core.users() : NULL; }
+int core_user_create(const char* name, char* message, size_t message_size) { return g_loaded ? g_core.user_create(name, message, message_size) : -100; }
+int core_user_rename(const char* user, const char* name, char* message, size_t message_size) { return g_loaded ? g_core.user_rename(user, name, message, message_size) : -100; }
+int core_user_remove(const char* user, char* message, size_t message_size) { return g_loaded ? g_core.user_remove(user, message, message_size) : -100; }
+int core_user_login(const char* user, char* message, size_t message_size) { return g_loaded ? g_core.user_login(user, message, message_size) : -100; }
+char* core_saves(const char* serial) { return g_loaded ? g_core.saves(serial) : NULL; }
+int core_save_remove(const char* dir) { return g_loaded ? g_core.save_remove(dir) : -100; }
+char* core_trophy_games(void) { return g_loaded ? g_core.trophy_games() : NULL; }
+char* core_trophies(const char* communication_id) { return g_loaded ? g_core.trophies(communication_id) : NULL; }
+int core_trophy_set_earned(const char* communication_id, int trophy, int earned) { return g_loaded ? g_core.trophy_set_earned(communication_id, trophy, earned) : -100; }
+int core_trophy_game_remove(const char* communication_id) { return g_loaded ? g_core.trophy_game_remove(communication_id) : -100; }
