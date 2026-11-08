@@ -6,14 +6,13 @@ recompilers running natively.
 ## Requirements
 
 - **iOS 26 or later.** Tested on iOS 26.6.
-- **iPhone 11 or newer** (what iOS 26 runs on), but memory is what matters:
+- **Device support** (memory wise):
   - 8 GB or more (iPhone 15 Pro, 16 series, 17 series): recommended, and what this is tested on
     (iPhone 16 Pro Max);
-  - 6 GB (iPhone 12 Pro, 13 Pro, 14, 15): untested; lighter games may run;
-  - 4 GB or less (iPhone 11, 12, 13, SE): untested; unlikely to run games.
+  - 6 GB (iPhone 12 Pro, 13 Pro, 14, 15): untested, should work in theory.
+  - 4 GB or less (iPhone 11, 12, 13, SE): untested, unlikely to run games.
 - A computer (Windows, macOS or Linux) and a USB cable, for the first setup and the 7-day reinstall.
-- An Apple ID. A free one works.
-- Your own PS3 games. This project provides none.
+- An Apple ID.
 
 ## Installing
 
@@ -26,14 +25,13 @@ recompilers running natively.
 4. In iloader, sign in with your Apple ID and import the IPA. iloader signs it with your Apple ID
    and installs it.
 5. On the iPhone:
-   - **Settings › Privacy & Security › Developer Mode**: turn it on and restart when asked. The
-     option shows up only after the app is installed.
+   - **Settings › Privacy & Security › Developer Mode**: turn it on and restart when asked.
    - **Settings › General › VPN & Device Management**: trust your Apple ID if RPCS3 does not open.
 
-### 2. Set up JIT (once)
+### 2. Set up JIT
 
-RPCS3 needs JIT to run games, and on iOS that takes a debugger. The app has one built in (StikJIT).
-It needs two things:
+RPCS3 needs JIT to run games, so we need a debugger. I built one in (StikJIT).
+Needs two things:
 
 1. **The iPhone's pairing file.** Make it with iloader's pairing file option while the iPhone is
    connected, and save it. Send the file to the iPhone (AirDrop, iCloud Drive, or any way it ends
@@ -41,8 +39,7 @@ It needs two things:
 2. **[LocalDevVPN](https://apps.apple.com/app/id6755608044)** from the App Store. Open it and
    connect. It works on Wi-Fi or with no network, but **not over cellular data**.
 
-Open RPCS3. It enables JIT by itself. The first time, it downloads the Developer Disk Image, which
-takes a minute and needs internet.
+Open RPCS3. It enables JIT by itself. First time, it downloads the Developer Disk Image, takes a minute and needs internet.
 
 ### 3. Firmware and games
 
