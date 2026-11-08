@@ -13,6 +13,7 @@
 #include "Emu/system_utils.hpp"
 #include "Utilities/File.h"
 #include "util/yaml.hpp"
+#include "ios/config_json.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -22,65 +23,10 @@ LOG_CHANNEL(settings_log, "Settings");
 // The Vulkan device the app renders with (rpcs3_ios.mm)
 std::string ios_vulkan_adapter();
 
+using namespace ios_config;
+
 namespace
 {
-	// A setting's place in the tree: one name per level ("Video", "Vulkan", "Adapter"). Names may
-	// contain '/' ("Input/Output"), so the app passes them separated by newlines.
-	std::vector<std::string> split_path(const char* path)
-	{
-		std::vector<std::string> names;
-		std::string name;
-
-		for (const char* p = path ? path : ""; *p; p++)
-		{
-			if (*p == '\n')
-			{
-				names.push_back(std::move(name));
-				name.clear();
-			}
-			else
-			{
-				name += *p;
-			}
-		}
-
-		names.push_back(std::move(name));
-		return names;
-	}
-
-	cfg::_base* find(cfg::node& root, const std::vector<std::string>& path)
-	{
-		cfg::_base* current = &root;
-
-		for (const std::string& name : path)
-		{
-			if (current->get_type() != cfg::type::node)
-			{
-				return nullptr;
-			}
-
-			cfg::_base* next = nullptr;
-
-			for (cfg::_base* child : static_cast<cfg::node*>(current)->get_nodes())
-			{
-				if (child->get_name() == name)
-				{
-					next = child;
-					break;
-				}
-			}
-
-			if (!next)
-			{
-				return nullptr;
-			}
-
-			current = next;
-		}
-
-		return current;
-	}
-
 	// RPCS3's defaults, except where iOS needs another one (the bridge also fixes these at launch)
 	std::string default_value(const cfg::_base& setting, const std::vector<std::string>& path)
 	{
@@ -189,107 +135,6 @@ namespace
 		}
 	}
 
-	std::string json_string(std::string_view text)
-	{
-		std::string out = "\"";
-
-		for (const char c : text)
-		{
-			switch (c)
-			{
-			case '"': out += "\\\""; break;
-			case '\\': out += "\\\\"; break;
-			case '\n': out += "\\n"; break;
-			case '\r': out += "\\r"; break;
-			case '\t': out += "\\t"; break;
-			default:
-				if (static_cast<u8>(c) < 0x20)
-					out += fmt::format("\\u%04x", static_cast<u8>(c));
-				else
-					out += c;
-			}
-		}
-
-		return out + "\"";
-	}
-
-	std::string json_list(const std::vector<std::string>& items)
-	{
-		std::string out = "[";
-
-		for (usz i = 0; i < items.size(); i++)
-		{
-			out += (i ? "," : "") + json_string(items[i]);
-		}
-
-		return out + "]";
-	}
-
-	// Every setting the app can edit, depth first
-	void describe(const cfg::node& node, std::vector<std::string>& path, const cfg_root* global, const YAML::Node* game_file, std::string& out)
-	{
-		for (const cfg::_base* child : node.get_nodes())
-		{
-			path.push_back(child->get_name());
-
-			std::string type;
-			std::vector<std::string> options;
-
-			switch (child->get_type())
-			{
-			case cfg::type::node:
-				describe(*static_cast<const cfg::node*>(child), path, global, game_file, out);
-				break;
-			case cfg::type::_bool: type = "bool"; break;
-			case cfg::type::_enum: type = "enum"; options = child->to_list(); break;
-			case cfg::type::_int:
-				// cfg::_float is an _int to the tree; its range has decimals
-				options = child->to_list();
-				type = options.size() == 2 && options[0].find('.') != umax ? "float" : "int";
-				break;
-			case cfg::type::uint: type = "uint"; options = child->to_list(); break;
-			case cfg::type::string: type = "string"; break;
-			default: break; // sets, maps, log levels and devices have their own editors on desktop
-			}
-
-			if (!type.empty())
-			{
-				const bool ranged = type == "int" || type == "float" || type == "uint";
-				std::string reset_value = default_value(*child, path);
-
-				if (global)
-				{
-					// A game's setting goes back to the global value
-					auto& root = const_cast<cfg_root&>(*global);
-					reset_value = ensure(find(root, path))->to_string();
-				}
-
-				out += out.size() > 1 ? "," : "";
-				out += fmt::format("{\"path\":%s,\"type\":\"%s\",\"value\":%s,\"reset\":%s,\"dynamic\":%s",
-					json_list(path), type, json_string(child->to_string()), json_string(reset_value), child->get_is_dynamic() ? "true" : "false");
-
-				if (ranged && options.size() == 2)
-					out += fmt::format(",\"min\":%s,\"max\":%s", json_string(options[0]), json_string(options[1]));
-				else if (type == "enum")
-					out += ",\"options\":" + json_list(options);
-
-				if (game_file)
-					out += fmt::format(",\"overridden\":%s", game_sets(*game_file, path) ? "true" : "false");
-
-				out += "}";
-			}
-
-			path.pop_back();
-		}
-	}
-
-	char* copy_string(const std::string& text)
-	{
-		char* out = static_cast<char*>(std::malloc(text.size() + 1));
-		std::memcpy(out, text.c_str(), text.size() + 1);
-		return out;
-	}
-
 	int fail(char* error, size_t error_size, const std::string& message)
 	{
 		settings_log.error("%s", message);
@@ -315,18 +160,25 @@ extern "C" char* rpcs3_ios_settings(const char* game)
 
 	if (for_game)
 	{
-		// What the game runs with: the global settings, then its own file over them
+		// What the game runs with: the global settings, then its own file over them. Resetting
+		// gives the global value; marked are the settings its file sets.
 		const YAML::Node file = load_game_file(game);
 		cfg_root effective;
 		load_global(effective);
 		YAML::Emitter out;
 		out << file;
 		effective.from_string(out.c_str());
-		describe(effective, path, &global, &file, settings);
+		describe(effective, path,
+			[&](const std::vector<std::string>& p, const cfg::_base&) { return ensure(find(global, p))->to_string(); },
+			[&](const std::vector<std::string>& p) -> std::optional<bool> { return game_sets(file, p); },
+			settings);
 	}
 	else
 	{
-		describe(global, path, nullptr, nullptr, settings);
+		describe(global, path,
+			[](const std::vector<std::string>& p, const cfg::_base& entry) { return default_value(entry, p); },
+			[](const std::vector<std::string>&) -> std::optional<bool> { return std::nullopt; },
+			settings);
 	}
 
 	settings += "]";

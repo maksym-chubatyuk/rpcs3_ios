@@ -35,6 +35,8 @@ static struct
 	const char* (*patch_engine_version)(void);
 	int (*patch_install)(const char*, const char*, char*, size_t);
 	int (*patch_import)(const char*, char*, size_t);
+	char* (*controls)(const char*);
+	int (*control_set)(const char*, int, const char*, const char*, char*, size_t);
 } g_core;
 
 static bool g_loaded;
@@ -101,6 +103,8 @@ bool core_load(char* error, size_t error_size)
 	RESOLVE(patch_engine_version, "rpcs3_ios_patch_engine_version");
 	RESOLVE(patch_install, "rpcs3_ios_patch_install");
 	RESOLVE(patch_import, "rpcs3_ios_patch_import");
+	RESOLVE(controls, "rpcs3_ios_controls");
+	RESOLVE(control_set, "rpcs3_ios_control_set");
 #undef RESOLVE
 
 	g_loaded = true;
@@ -174,3 +178,10 @@ char* core_patch_download_url(void) { return g_loaded ? g_core.patch_download_ur
 const char* core_patch_engine_version(void) { return g_loaded ? g_core.patch_engine_version() : ""; }
 int core_patch_install(const char* content, const char* sha256, char* message, size_t message_size) { return g_loaded ? g_core.patch_install(content, sha256, message, message_size) : -100; }
 int core_patch_import(const char* path, char* message, size_t message_size) { return g_loaded ? g_core.patch_import(path, message, message_size) : -100; }
+
+char* core_controls(const char* game) { return g_loaded ? g_core.controls(game) : NULL; }
+
+int core_control_set(const char* game, int player, const char* path, const char* value, char* error, size_t error_size)
+{
+	return g_loaded ? g_core.control_set(game, player, path, value, error, error_size) : -100;
+}

@@ -130,6 +130,16 @@ int rpcs3_ios_patch_install(const char* content, const char* sha256, char* messa
 // Adds the patches of a patch file to imported_patch.yml. Number added, or -1; message says what happened.
 int rpcs3_ios_patch_import(const char* path, char* message, size_t message_size);
 
+// Controls (core/controls.cpp): the seven players' input configuration. game: NULL or "" for the
+// global controls, or a title ID for that game's own (its first change starts them from the global ones).
+// As JSON to free with rpcs3_ios_free: {"running", "gameHasOwn": bool, "devices": [SDL device names],
+// "buttons": [SDL button names for mappings], "players": [{"settings": [entries as rpcs3_ios_settings
+// describes them, with paths inside the player: ["Handler"], ["Device"], ["Config", "Cross"]...]}]}
+// "reset" of a Config entry is the player's handler default.
+char* rpcs3_ios_controls(const char* game);
+// Sets one entry of a player (0-6). Setting "Handler" also gives the player that handler's defaults.
+int rpcs3_ios_control_set(const char* game, int player, const char* path, const char* value, char* error, size_t error_size);
+
 // Settings (core/settings.cpp). game: NULL or "" for the global settings (config.yml), or a title ID
 // for that game's own settings, which RPCS3 applies over the global ones when it boots.
 // A setting's path is its names in the config tree, separated by '\n' ("Video\nVulkan\nAdapter").

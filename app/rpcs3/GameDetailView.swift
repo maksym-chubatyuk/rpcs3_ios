@@ -166,6 +166,17 @@ struct GameDetailView: View {
                 Label("Patches", systemImage: "bandage")
             }
             .disabled(game.titleID == nil)
+            NavigationLink {
+                ControlsView(gameID: game.titleID, gameTitle: game.title)
+                    .onDisappear(perform: reload)
+            } label: {
+                LabeledContent {
+                    Text(data?.customInput == true ? "Own controls" : "Global controls")
+                } label: {
+                    Label("Controls", systemImage: "gamecontroller")
+                }
+            }
+            .disabled(game.titleID == nil)
             if data?.customConfig == true {
                 Button("Use Global Settings Only", systemImage: "arrow.uturn.backward") {
                     confirm = Confirmation(title: "Use the global settings only?",

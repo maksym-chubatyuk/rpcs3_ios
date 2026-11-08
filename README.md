@@ -104,6 +104,16 @@ follows the global settings until it is changed for that game, and can be set ba
 They are RPCS3's custom configs (`custom_configs/config_<title ID>.yml`), holding only what the game
 changes.
 
+## Patches and controls
+
+A game's page (the ⓘ in the library) has its **patches**: RPCS3's patch engine with the official
+patch file from rpcs3.net (downloaded and checked as desktop does) and patch files imported from the
+Files app; patches made for any game are listed apart from the game's own. **Controls** are in
+Settings for all games and on a game's page for that game alone: what each of the seven players is
+connected to (player 1 is normally the on-screen controls together with the first controller), the
+button mapping, sticks, triggers, vibration, pressure-sensitive buttons and the analog limiter. A game
+gets its own controls from its first change, starting from the global ones.
+
 ## Updating RPCS3
 
 ```sh

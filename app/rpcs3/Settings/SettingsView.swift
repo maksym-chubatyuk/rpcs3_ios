@@ -35,6 +35,15 @@ struct SettingsView: View {
     }
 
     @ViewBuilder private var overview: some View {
+        if store.gameID == nil {
+            Section {
+                NavigationLink {
+                    ControlsView()
+                } label: {
+                    Label("Controls", systemImage: "gamecontroller")
+                }
+            }
+        }
         Section {
             ForEach(layout.tabs, id: \.title) { tab in
                 NavigationLink {
@@ -149,7 +158,7 @@ struct OtherSettingsView: View {
 
 /// One setting, with the control its type needs.
 struct SettingRow: View {
-    let store: SettingsStore
+    let store: any SettingsEditing
     let setting: Setting
     let label: String
     let description: String
@@ -162,7 +171,7 @@ struct SettingRow: View {
             control
             if setting.isChanged || (store.isGameRunning && !setting.dynamic) {
                 HStack(spacing: 6) {
-                    if store.gameID != nil, setting.overridden == true {
+                    if store.isGameScope, setting.overridden == true {
                         Text("This game").foregroundStyle(.tint)
                     } else if setting.isChanged {
                         Text("Changed").foregroundStyle(.orange)
@@ -176,7 +185,7 @@ struct SettingRow: View {
         }
         .contextMenu {
             if setting.isChanged {
-                Button(store.gameID == nil ? "Reset to Default" : "Use Global Setting", systemImage: "arrow.uturn.backward") {
+                Button(store.isGameScope && setting.overridden != nil ? "Use Global Setting" : "Reset to Default", systemImage: "arrow.uturn.backward") {
                     store.reset(setting)
                 }
             }
@@ -186,7 +195,7 @@ struct SettingRow: View {
         }
         .swipeActions(edge: .trailing) {
             if setting.isChanged {
-                Button(store.gameID == nil ? "Reset" : "Use Global") { store.reset(setting) }
+                Button(store.isGameScope && setting.overridden != nil ? "Use Global" : "Reset") { store.reset(setting) }
                     .tint(.orange)
             }
         }

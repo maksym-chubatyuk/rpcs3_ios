@@ -56,10 +56,21 @@ struct Setting: Decodable, Identifiable, Hashable {
     var isChanged: Bool { overridden ?? (value != reset) }
 }
 
+/// What a settings row edits: the settings or the controls, globally or for one game.
+@MainActor
+protocol SettingsEditing: AnyObject {
+    /// For one game (its changes are marked "This game" and reset to the global value)
+    var isGameScope: Bool { get }
+    var isGameRunning: Bool { get }
+    func set(_ setting: Setting, to value: String)
+    func reset(_ setting: Setting)
+}
+
 /// The global settings, or one game's own settings over them.
 @Observable
 @MainActor
-final class SettingsStore {
+final class SettingsStore: SettingsEditing {
+    var isGameScope: Bool { gameID != nil }
     /// nil: the global settings.
     let gameID: String?
     let gameTitle: String?

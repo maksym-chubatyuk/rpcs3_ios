@@ -61,6 +61,10 @@ const char* core_patch_engine_version(void);
 int core_patch_install(const char* content, const char* sha256, char* message, size_t message_size);
 int core_patch_import(const char* path, char* message, size_t message_size);
 
+// Controls (see rpcs3_ios_controls in core/rpcs3_ios.h)
+char* core_controls(const char* game);
+int core_control_set(const char* game, int player, const char* path, const char* value, char* error, size_t error_size);
+
 #ifdef __cplusplus
 }
 #endif

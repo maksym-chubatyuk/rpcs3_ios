@@ -283,6 +283,20 @@ final class Emulator {
                 }
             }
         }
+        // RPCS3_CONTROLS_TEST=1: reads the controls, gives the first game its own deadzone, then removes its controls
+        if env["RPCS3_CONTROLS_TEST"] != nil, let game = games.first, let id = game.titleID {
+            let global = ControlsStore(gameID: nil)
+            let p1 = global.players.first
+            log("controls test: devices \(global.devices), \(global.buttons.count) button names, player 1 \(p1?.handler ?? "?") \(p1?.device ?? "?"), Cross = \(p1?.settings[["Config", "Cross"]]?.value ?? "?"), \(p1?.settings.count ?? 0) entries, error \(global.lastError ?? "none")")
+            let own = ControlsStore(gameID: id)
+            let before = own.gameHasOwn
+            own.set(player: 0, ["Config", "Left Stick Deadzone"], to: "5000")
+            let deadzone = own.players.first?.settings[["Config", "Left Stick Deadzone"]]?.value ?? "?"
+            let globalDeadzone = ControlsStore(gameID: nil).players.first?.settings[["Config", "Left Stick Deadzone"]]?.value ?? "?"
+            log("controls test: \(game.title) own before \(before), after \(own.gameHasOwn), deadzone \(deadzone), global deadzone \(globalDeadzone), error \(own.lastError ?? "none")")
+            removeData("input", of: game)
+            log("controls test: after removing, own \(ControlsStore(gameID: id).gameHasOwn)")
+        }
         // RPCS3_REMOVE_DATA=<item>: removes that item (GameData) of the first game, then reports what is left
         if let item = env["RPCS3_REMOVE_DATA"], let game = games.first, let before = gameData(game) {
             let ok = removeData(item, of: game)
