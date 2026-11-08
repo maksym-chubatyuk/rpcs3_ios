@@ -137,6 +137,9 @@ and shares them for bug reports.
 
 What still has to be checked by hand on a phone is listed in [TESTING.md](TESTING.md).
 
+The app icon is RPCS3's own logo, made from the submodule's `rpcs3/rpcs3.svg` with
+`swift scripts/gen-app-icon.swift`.
+
 ## Updating RPCS3
 
 ```sh
