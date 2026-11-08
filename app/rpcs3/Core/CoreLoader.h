@@ -52,6 +52,15 @@ int core_create_llvm_cache(const char* path, const char* title_id);
 char* core_game_data(const char* title_id, const char* path);
 int core_game_remove(const char* title_id, const char* what);
 
+// Patches (see rpcs3_ios_patches and the others in core/rpcs3_ios.h)
+char* core_patches(const char* title_id, const char* app_version);
+int core_patch_enable(const char* hash, const char* description, const char* title, const char* serial, const char* app_version, int enabled);
+int core_patch_set_value(const char* hash, const char* description, const char* title, const char* serial, const char* app_version, const char* name, double value);
+char* core_patch_download_url(void);
+const char* core_patch_engine_version(void);
+int core_patch_install(const char* content, const char* sha256, char* message, size_t message_size);
+int core_patch_import(const char* path, char* message, size_t message_size);
+
 #ifdef __cplusplus
 }
 #endif

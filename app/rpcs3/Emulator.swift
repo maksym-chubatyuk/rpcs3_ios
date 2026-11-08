@@ -265,6 +265,24 @@ final class Emulator {
         if let game = env["RPCS3_SETTINGS_SELFTEST"], !game.isEmpty {
             settingsSelfTest(game: game)
         }
+        // RPCS3_PATCH_TEST=1: downloads the patches, lists the first game's, turns one on and off again
+        if env["RPCS3_PATCH_TEST"] != nil, let game = games.first {
+            Task { @MainActor in
+                let store = PatchStore(game: game)
+                await store.downloadLatest()
+                self.log("patch test: download: \(store.message ?? "no message"); \(store.patches.count) patches for \(game.title) \(store.appVersion), \(store.patches.filter { !$0.isForAllGames }.count) of them its own")
+                for patch in store.patches.filter({ !$0.isForAllGames }).prefix(8) {
+                    self.log("patch test:   \(patch.enabled ? "on " : "off") \(patch.description) [\(patch.group)] by \(patch.author), values \(patch.configValues.map(\.name))")
+                }
+                if let first = store.patches.first(where: { !$0.enabled }) {
+                    store.setEnabled(first, true)
+                    let on = store.patches.first { $0.id == first.id }?.enabled ?? false
+                    store.setEnabled(first, false)
+                    let off = store.patches.first { $0.id == first.id }?.enabled ?? true
+                    self.log("patch test: '\(first.description)' on -> \(on), off -> \(!off), message \(store.message ?? "none")")
+                }
+            }
+        }
         // RPCS3_REMOVE_DATA=<item>: removes that item (GameData) of the first game, then reports what is left
         if let item = env["RPCS3_REMOVE_DATA"], let game = games.first, let before = gameData(game) {
             let ok = removeData(item, of: game)
@@ -437,6 +455,19 @@ final class Emulator {
         log("removing \(item) of \(game.title): \(ok ? "done" : "failed")")
         if !ok { lastMessage = "Could not remove all of it. See RPCS3.log." }
         return ok
+    }
+
+    /// The version a game runs as: an installed update's (RPCS3 boots a disc game from its update
+    /// on the console's drive), otherwise the game's own. Patches are made for one version.
+    func appVersion(of game: Game) -> String {
+        let own = game.info["APP_VER"] ?? ""
+        guard coreReady, let id = game.titleID else { return own }
+        let update = URL(fileURLWithPath: String(cString: core_emulator_dir()))
+            .appending(path: "dev_hdd0/game/\(id)/PARAM.SFO")
+        if let data = try? Data(contentsOf: update), let version = ParamSFO(data: data)?.strings["APP_VER"], !version.isEmpty {
+            return version
+        }
+        return own
     }
 
     func pause() { core_pause() }

@@ -160,6 +160,12 @@ struct GameDetailView: View {
                 }
             }
             .disabled(game.titleID == nil)
+            NavigationLink {
+                PatchesView(game: game)
+            } label: {
+                Label("Patches", systemImage: "bandage")
+            }
+            .disabled(game.titleID == nil)
             if data?.customConfig == true {
                 Button("Use Global Settings Only", systemImage: "arrow.uturn.backward") {
                     confirm = Confirmation(title: "Use the global settings only?",

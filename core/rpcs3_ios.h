@@ -113,6 +113,23 @@ char* rpcs3_ios_game_data(const char* title_id, const char* path);
 // "savestates", "savedata", "installed" (updates and DLC on the virtual HDD). 0 on success.
 int rpcs3_ios_game_remove(const char* title_id, const char* what);
 
+// Game patches (core/patches.cpp), through RPCS3's patch engine
+// The patches that apply to a game (its serial and app version, or "All"), as JSON to free with
+// rpcs3_ios_free: [{"hash", "description", "title", "serial", "appVersion" (the keys of the entry),
+// "enabled", "author", "notes", "version", "group", "file", "configValues": [{"name", "value", "min",
+// "max", "isList", "isInteger", "options": [{"label", "value"}]}]}]
+char* rpcs3_ios_patches(const char* title_id, const char* app_version);
+// Turns one entry on or off (on turns off the others of its group, as desktop does). 0 on success.
+int rpcs3_ios_patch_enable(const char* hash, const char* description, const char* title, const char* serial, const char* app_version, int enabled);
+int rpcs3_ios_patch_set_value(const char* hash, const char* description, const char* title, const char* serial, const char* app_version, const char* name, double value);
+// The official patches: the URL to ask rpcs3.net (free with rpcs3_ios_free), the patch engine version the
+// answer must have, and installing the "patch" text of the answer after checking its "sha256"
+char* rpcs3_ios_patch_download_url(void);
+const char* rpcs3_ios_patch_engine_version(void);
+int rpcs3_ios_patch_install(const char* content, const char* sha256, char* message, size_t message_size);
+// Adds the patches of a patch file to imported_patch.yml. Number added, or -1; message says what happened.
+int rpcs3_ios_patch_import(const char* path, char* message, size_t message_size);
+
 // Settings (core/settings.cpp). game: NULL or "" for the global settings (config.yml), or a title ID
 // for that game's own settings, which RPCS3 applies over the global ones when it boots.
 // A setting's path is its names in the config tree, separated by '\n' ("Video\nVulkan\nAdapter").

@@ -28,6 +28,13 @@ static struct
 	int (*create_llvm_cache)(const char*, const char*);
 	char* (*game_data)(const char*, const char*);
 	int (*game_remove)(const char*, const char*);
+	char* (*patches)(const char*, const char*);
+	int (*patch_enable)(const char*, const char*, const char*, const char*, const char*, int);
+	int (*patch_set_value)(const char*, const char*, const char*, const char*, const char*, const char*, double);
+	char* (*patch_download_url)(void);
+	const char* (*patch_engine_version)(void);
+	int (*patch_install)(const char*, const char*, char*, size_t);
+	int (*patch_import)(const char*, char*, size_t);
 } g_core;
 
 static bool g_loaded;
@@ -87,6 +94,13 @@ bool core_load(char* error, size_t error_size)
 	RESOLVE(create_llvm_cache, "rpcs3_ios_create_llvm_cache");
 	RESOLVE(game_data, "rpcs3_ios_game_data");
 	RESOLVE(game_remove, "rpcs3_ios_game_remove");
+	RESOLVE(patches, "rpcs3_ios_patches");
+	RESOLVE(patch_enable, "rpcs3_ios_patch_enable");
+	RESOLVE(patch_set_value, "rpcs3_ios_patch_set_value");
+	RESOLVE(patch_download_url, "rpcs3_ios_patch_download_url");
+	RESOLVE(patch_engine_version, "rpcs3_ios_patch_engine_version");
+	RESOLVE(patch_install, "rpcs3_ios_patch_install");
+	RESOLVE(patch_import, "rpcs3_ios_patch_import");
 #undef RESOLVE
 
 	g_loaded = true;
@@ -143,3 +157,20 @@ int core_boot_with(const char* path, const char* title_id, int mode, const char*
 int core_create_llvm_cache(const char* path, const char* title_id) { return g_loaded ? g_core.create_llvm_cache(path, title_id) : -100; }
 char* core_game_data(const char* title_id, const char* path) { return g_loaded ? g_core.game_data(title_id, path) : NULL; }
 int core_game_remove(const char* title_id, const char* what) { return g_loaded ? g_core.game_remove(title_id, what) : -100; }
+
+char* core_patches(const char* title_id, const char* app_version) { return g_loaded ? g_core.patches(title_id, app_version) : NULL; }
+
+int core_patch_enable(const char* hash, const char* description, const char* title, const char* serial, const char* app_version, int enabled)
+{
+	return g_loaded ? g_core.patch_enable(hash, description, title, serial, app_version, enabled) : -100;
+}
+
+int core_patch_set_value(const char* hash, const char* description, const char* title, const char* serial, const char* app_version, const char* name, double value)
+{
+	return g_loaded ? g_core.patch_set_value(hash, description, title, serial, app_version, name, value) : -100;
+}
+
+char* core_patch_download_url(void) { return g_loaded ? g_core.patch_download_url() : NULL; }
+const char* core_patch_engine_version(void) { return g_loaded ? g_core.patch_engine_version() : ""; }
+int core_patch_install(const char* content, const char* sha256, char* message, size_t message_size) { return g_loaded ? g_core.patch_install(content, sha256, message, message_size) : -100; }
+int core_patch_import(const char* path, char* message, size_t message_size) { return g_loaded ? g_core.patch_import(path, message, message_size) : -100; }
