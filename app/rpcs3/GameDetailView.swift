@@ -13,6 +13,8 @@ struct GameIcon: View {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+                    // Many ICON0s are transparent, made for the XMB's dark backdrop
+                    .background(LinearGradient(colors: [Color(white: 0.22), Color(white: 0.08)], startPoint: .top, endPoint: .bottom))
             } else {
                 Image(systemName: game.isISO ? "opticaldisc" : "folder")
                     .font(.system(size: width * 0.3))

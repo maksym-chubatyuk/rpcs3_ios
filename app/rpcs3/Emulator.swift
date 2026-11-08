@@ -420,6 +420,26 @@ final class Emulator {
                 UserDefaults.standard.removeObject(forKey: "touchLayout")
             }
         }
+        // RPCS3_LIBRARY_TEST=1: the game list's columns for every game, and the library's window as
+        // Documents/library.png, once the compatibility database and the sizes are in
+        if env["RPCS3_LIBRARY_TEST"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+                for game in self.games {
+                    let status = CompatibilityDatabase.shared.status(of: game.titleID).title
+                    let size = GameSizes.shared.bytes[game.id].map { "\($0)" } ?? "?"
+                    let played = PlayHistory.all()[PlayHistory.key(for: game)].map { "\($0.seconds) s, last \($0.lastPlayed)" } ?? "never"
+                    self.log("library test: \(game.title) [\(game.titleID ?? "-")] \(status), \(size) bytes, played \(played)")
+                }
+                let window = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first
+                if let window {
+                    let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                        window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                    }
+                    try? image.pngData()?.write(to: URL.documentsDirectory.appending(path: "library.png"))
+                }
+                self.log("library test: captured \(window.map { "\($0.bounds.size)" } ?? "no window"), \(CompatibilityDatabase.shared.statuses.count) games in the compatibility database")
+            }
+        }
         // RPCS3_REMOVE_DATA=<item>: removes that item (GameData) of the first game, then reports what is left
         if let item = env["RPCS3_REMOVE_DATA"], let game = games.first, let before = gameData(game) {
             let ok = removeData(item, of: game)
@@ -630,6 +650,7 @@ final class Emulator {
     }
 
     func dismissMessage() { lastMessage = nil }
+    func show(_ message: String) { lastMessage = message }
 }
 
 /// How to start a game: the choices of desktop's game menu.

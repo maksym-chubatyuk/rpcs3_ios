@@ -10,20 +10,31 @@ Tick an item off when it works; note what went wrong otherwise.
 ## JIT and setup
 
 - [x] JIT without a Mac: import the pairing file, connect LocalDevVPN, tap Enable JIT (StikJIT inside the app).
-- [ ] Firmware: install PS3UPDAT.PUP picked in Files ("Choose PS3UPDAT.PUP in Files…") and from the RPCS3 folder.
+- [ ] Firmware: install PS3UPDAT.PUP picked in Files ("Choose…" next to "No firmware", and Open › Install Firmware…) and from the RPCS3 folder.
 - [ ] Add a game folder from Files (iCloud Drive, On My iPhone, an external drive) and an ISO.
 - [ ] A game copied into On My iPhone › RPCS3 › Games shows up after pull to refresh.
 - [ ] Remove from Library (Files games), and the context menu's Copy Serial and Check Compatibility.
 
+## Library (the main screen)
+
+- [ ] Tapping a game plays it; the row highlights while pressed.
+- [ ] Long press: every item of the menu works (Game Controls and Patches open as sheets).
+- [ ] Landscape shows the table: tapping a column header sorts by it (again: reverse); long press on the header hides and shows columns, and they stay after a restart.
+- [ ] The icon size slider and search (by name or serial).
+- [ ] Last Played and Time Played fill in after playing a game; the toolbar's Play then starts it.
+- [ ] Compatibility fills in on the first start with internet; Refresh updates the list (pull down works too).
+- [ ] Toolbar: Open's items, Config, Pads, RPCN and Manage's items open the right screens.
+- [ ] The setup panel shows while JIT is off or the firmware is missing, and goes away once both are done.
+
 ## Installing packages
 
-- [ ] + › Install Packages: pick a game PKG with its .rap licence; the review lists title, version, type and size.
+- [ ] Open › Install Packages: pick a game PKG with its .rap licence; the review lists title, version, type and size.
 - [ ] The installation shows progress, Cancel stops it, and the installed game appears in the library ("installed").
 - [ ] The installed game starts (its licence works).
 - [ ] An update PKG for a disc game installs, and the game page's version and patches follow it.
 - [ ] An update for the wrong version is marked and skipped.
 - [ ] A DLC PKG installs and the game sees it.
-- [ ] Uninstall (swipe, long press, game page) deletes the installed game, its update and DLC.
+- [ ] Uninstall (long press, game page) deletes the installed game, its update and DLC.
 - [ ] Leaving the app during an installation: it either finishes or is cancelled cleanly.
 
 ## Playing
@@ -38,7 +49,7 @@ Tick an item off when it works; note what went wrong otherwise.
 
 ## Game page
 
-- [ ] Opens from ⓘ and from the context menu; Play starts the game after the sheet closes.
+- [ ] Opens from the context menu (long press › Details); Play starts the game after the sheet closes.
 - [ ] Caches: sizes are right; swipe or long press removes one; Remove All Caches; Build PPU Cache Now shows progress and closes by itself.
 - [ ] Data: Savestates and Updates and DLC removal ask first and work.
 - [ ] Use Global Settings Only and Use Global Controls Only appear only when the game has its own, and remove them.
@@ -78,7 +89,7 @@ Tick an item off when it works; note what went wrong otherwise.
 
 ## Users, save data, trophies
 
-- [ ] Users (person icon in the library › Users): create, rename, log in, delete (not the logged-in user).
+- [ ] Users (Manage › User Accounts): create, rename, log in, delete (not the logged-in user).
 - [ ] A game shows the logged-in user's name; another user starts with no saves and trophies.
 - [ ] The user stays logged in after the app is closed and opened again.
 - [ ] Save Data: icons, titles and dates; search; details sheet.
@@ -91,7 +102,7 @@ Tick an item off when it works; note what went wrong otherwise.
 
 ## RPCN (online)
 
-- [ ] Create an account (person icon › RPCN, or Settings › RPCN); the token arrives by email; enter it in Edit Account.
+- [ ] Create an account (RPCN in the toolbar, or Settings › RPCN); the token arrives by email; enter it in Edit Account.
 - [ ] Test Account says it works; Use an Existing Account with a desktop RPCS3 account works too.
 - [ ] Play Online with RPCN, then a game that plays online connects (RPCN popups appear if turned on).
 - [ ] Send the Token Again, Change Password (reset token by email), Delete Account.

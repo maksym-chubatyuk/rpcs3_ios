@@ -35,7 +35,7 @@ Needs two things:
 
 1. **The iPhone's pairing file.** Make it with iloader's pairing file option while the iPhone is
    connected, and save it. Send the file to the iPhone (AirDrop, iCloud Drive, or any way it ends
-   up in the Files app). In RPCS3, tap **Import Pairing File…** and pick it. The app keeps it.
+   up in the Files app). In RPCS3, tap **Import…** next to "JIT is off" and pick it. The app keeps it.
 2. **[LocalDevVPN](https://apps.apple.com/app/id6755608044)** from the App Store. Open it and
    connect. It works on Wi-Fi or with no network, but **not over cellular data**.
 
@@ -45,8 +45,8 @@ Open RPCS3. It enables JIT by itself. First time, it downloads the Developer Dis
 
 1. Download `PS3UPDAT.PUP` from
    [PlayStation's PS3 system software page](https://www.playstation.com/support/hardware/ps3/system-software/),
-   then tap **Choose PS3UPDAT.PUP in Files…** in RPCS3.
-2. Add games with **+**:
+   then in RPCS3 tap **Choose…** next to "No firmware" (later: **Open › Reinstall Firmware…**).
+2. Add games with **Open**:
    - **Game folder**: a dumped disc (the folder with `PS3_GAME` in it) or a PSN/HDD game (with `USRDIR`);
    - **ISO file**;
    - **Install Packages**: PKG files (games, updates, DLC), together with their `.rap` licences
@@ -66,7 +66,7 @@ saves and settings stay.
 
 - **JIT does not enable**: check that LocalDevVPN is connected and you are not on cellular data. If
   the iPhone was reset or re-paired with the computer, make a new pairing file in iloader and use
-  **Replace Pairing File…**.
+  **Open › Replace Pairing File…**.
 - **RPCS3 does not open**: after 7 days with a free Apple ID, reinstall it with iloader. Otherwise,
   check Developer Mode and that your Apple ID is trusted (above).
 - **A game does not run well**: see how it runs in RPCS3 itself on the
