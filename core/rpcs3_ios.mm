@@ -829,6 +829,11 @@ extern "C" const char* rpcs3_ios_emulator_dir(void)
 	return dir.c_str();
 }
 
+extern "C" const char* rpcs3_ios_log_dir(void)
+{
+	return fs::get_log_dir().c_str();
+}
+
 extern "C" const char* rpcs3_ios_firmware_version(void)
 {
 	g_fw_version = utils::get_firmware_version();

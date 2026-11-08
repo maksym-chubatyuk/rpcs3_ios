@@ -112,7 +112,9 @@ Files app; patches made for any game are listed apart from the game's own. **Con
 Settings for all games and on a game's page for that game alone: what each of the seven players is
 connected to (player 1 is normally the on-screen controls together with the first controller), the
 button mapping, sticks, triggers, vibration, pressure-sensitive buttons and the analog limiter. A game
-gets its own controls from its first change, starting from the global ones.
+gets its own controls from its first change, starting from the global ones. **Edit Layout…** there
+arranges the on-screen controls (drag and pinch each group; size, opacity, vibration), for all games
+or for one.
 
 ## Users, save data and trophies
 
@@ -129,6 +131,9 @@ installed this way are in the library and can be uninstalled there (`core/packag
 **RPCN**, RPCS3's online service, is set up under the person icon or in Settings: creating an
 account, an existing account's details, the email token, the password and the server, and the
 switch that takes games online (`core/rpcn.cpp`, as desktop's RPCN dialog).
+
+**Logs** (Settings › Logs) shows RPCS3.log, TTY.log and the app's own log, filtered and searchable,
+and shares them for bug reports.
 
 What still has to be checked by hand on a phone is listed in [TESTING.md](TESTING.md).
 

@@ -69,6 +69,13 @@ Tick an item off when it works; note what went wrong otherwise.
 - [ ] Vibration on a controller.
 - [ ] Changing controls while a game runs takes effect at once.
 
+## On-screen controls layout
+
+- [ ] Controls › Edit Layout…: drag each group (face buttons, D-pad, Select/PS/Start), pinch one to resize it.
+- [ ] Size, Opacity and Vibrate on Press change what is shown; Reset; Hide Options; Cancel keeps the old layout.
+- [ ] Save, then a game shows the controls as arranged, and they still respond where they are drawn.
+- [ ] A game's own layout (game page › Controls › Edit Layout… › This Game Only), and Use the Layout for All Games.
+
 ## Users, save data, trophies
 
 - [ ] Users (person icon in the library › Users): create, rename, log in, delete (not the logged-in user).
@@ -89,6 +96,11 @@ Tick an item off when it works; note what went wrong otherwise.
 - [ ] Play Online with RPCN, then a game that plays online connects (RPCN popups appear if turned on).
 - [ ] Send the Token Again, Change Password (reset token by email), Delete Account.
 - [ ] Add Server…, switch servers, remove a server.
+
+## Logs
+
+- [ ] Settings › Logs shows RPCS3.log, TTY.log and the app log; the level filter and search work.
+- [ ] Share sends the whole log (e.g. to Files or Mail).
 
 ## General
 

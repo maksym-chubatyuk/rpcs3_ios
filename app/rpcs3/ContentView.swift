@@ -64,6 +64,7 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("RPCS3")
+            .fullScreenCover(isPresented: $emulator.showsLayoutEditorTest) { TouchLayoutEditor() }
             .refreshable { emulator.refreshGames() }
             .toolbar {
                 if emulator.coreReady {

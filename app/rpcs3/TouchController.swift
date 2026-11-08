@@ -5,6 +5,53 @@ import UIKit
 // Ported from the win app's TouchController (same layout and touch handling), with the
 // buttons of a PlayStation 3 controller and RPCS3 as the receiver.
 
+/// How the on-screen controls are laid out: their size and opacity, and where each group sits.
+/// Kept for all games, and for a game that has its own.
+struct TouchLayout: Codable, Equatable {
+    /// The face buttons with R1/R2, the D-pad with L1/L2, and Select/PS/Start.
+    enum Group: String, Codable, CaseIterable { case face, dpad, system }
+
+    struct Placement: Codable, Equatable {
+        /// Moved from the default place by these fractions of the screen's width and height
+        var dx: Double = 0
+        var dy: Double = 0
+        var scale: Double = 1
+    }
+
+    var size: Double = 1
+    var opacity: Double = 1
+    var haptics = true
+    var placements: [Group: Placement] = [:]
+
+    subscript(group: Group) -> Placement {
+        get { placements[group] ?? Placement() }
+        set { placements[group] = newValue }
+    }
+
+    static let sizes = 0.6...1.5
+    static let opacities = 0.3...2.0
+    static let groupScales = 0.6...1.6
+
+    private static func key(_ gameID: String?) -> String { gameID.map { "touchLayout.\($0)" } ?? "touchLayout" }
+
+    private static func stored(_ gameID: String?) -> TouchLayout? {
+        UserDefaults.standard.data(forKey: key(gameID)).flatMap { try? JSONDecoder().decode(TouchLayout.self, from: $0) }
+    }
+
+    /// A game's own layout, else the one for all games.
+    static func load(for gameID: String?) -> TouchLayout {
+        gameID.flatMap(stored) ?? stored(nil) ?? TouchLayout()
+    }
+
+    static func hasOwn(_ gameID: String) -> Bool { stored(gameID) != nil }
+
+    static func save(_ layout: TouchLayout, for gameID: String?) {
+        if let data = try? JSONEncoder().encode(layout) { UserDefaults.standard.set(data, forKey: key(gameID)) }
+    }
+
+    static func removeOwn(_ gameID: String) { UserDefaults.standard.removeObject(forKey: key(gameID)) }
+}
+
 /// DualShock 3 buttons, as the core takes them (rpcs3_ios_pad_button in rpcs3_ios.h).
 struct PadButtons: OptionSet, Hashable {
     let rawValue: UInt32
@@ -203,6 +250,33 @@ final class TouchControllerView: UIView {
     private let haptics = UIImpactFeedbackGenerator(style: .light)
     private static let deadZone = 0.12
 
+    var layout = TouchLayout() {
+        didSet {
+            guard layout != oldValue else { return }
+            setNeedsLayout()
+            resetAlpha()
+        }
+    }
+
+    /// Editing the layout: a finger drags a group and two pinch it, instead of playing.
+    var isEditing = false {
+        didSet {
+            guard isEditing != oldValue else { return }
+            releaseAll()
+            pinch.isEnabled = isEditing
+            outlines.values.forEach { $0.isHidden = !isEditing }
+            setNeedsLayout()
+        }
+    }
+
+    /// Called while editing, with the changed layout.
+    var onLayoutChange: ((TouchLayout) -> Void)?
+
+    private var outlines: [TouchLayout.Group: CAShapeLayer] = [:]
+    private var drags: [ObjectIdentifier: (group: TouchLayout.Group, start: CGPoint, placement: TouchLayout.Placement)] = [:]
+    private var pinched: (group: TouchLayout.Group, scale: Double)?
+    private lazy var pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:)))
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         isMultipleTouchEnabled = true
@@ -228,7 +302,7 @@ final class TouchControllerView: UIView {
             pad.view.layer.borderWidth = kind == .shoulder ? 0 : 2
             pad.view.backgroundColor = .clear
             pad.view.clipsToBounds = true
-            pad.view.alpha = Self.idleAlpha(of: kind)
+            pad.view.alpha = Self.idleAlpha(of: kind) // layout.opacity applies in resetAlpha
             pad.view.isAccessibilityElement = true
             pad.view.accessibilityLabel = label
             if kind == .shoulder {
@@ -241,6 +315,38 @@ final class TouchControllerView: UIView {
             }
             addSubview(pad.view)
             pads.append(pad)
+        }
+        for group in TouchLayout.Group.allCases {
+            let outline = CAShapeLayer()
+            outline.strokeColor = UIColor.systemYellow.cgColor
+            outline.fillColor = UIColor.systemYellow.withAlphaComponent(0.08).cgColor
+            outline.lineWidth = 1.5
+            outline.lineDashPattern = [6, 4]
+            outline.isHidden = true
+            layer.addSublayer(outline)
+            outlines[group] = outline
+        }
+        pinch.isEnabled = false
+        addGestureRecognizer(pinch)
+    }
+
+    private static func group(of control: Control) -> TouchLayout.Group? {
+        switch kind(of: control) {
+        case .face: .face
+        case .dpad: .dpad
+        case .shoulder: control == .r2 || control == .button(.r1) ? .face : .dpad
+        case .system: control == .leftStick || control == .rightStick ? nil : .system
+        }
+    }
+
+    private func idleAlpha(of control: Control) -> CGFloat {
+        min(1, max(0.05, Self.idleAlpha(of: Self.kind(of: control)) * CGFloat(layout.opacity)))
+    }
+
+    private func resetAlpha() {
+        for pad in pads {
+            pad.view.alpha = idleAlpha(of: pad.control)
+            pad.shape.opacity = Float(idleAlpha(of: pad.control))
         }
     }
 
@@ -276,20 +382,25 @@ final class TouchControllerView: UIView {
         guard area.width > 0, area.height > 0 else { return }
         // Sized for a 6.9-inch phone in landscape (about 400 points of usable height);
         // smaller screens scale down so nothing overlaps.
-        let s = min(1.1, max(0.7, min(area.height, area.width / 2) / 420))
+        let base: CGFloat = min(1.1, max(0.7, min(area.height, area.width / 2) / 420)) * CGFloat(layout.size)
+        // Each group's own size and place (TouchLayout), on top of the screen's
+        func scale(_ group: TouchLayout.Group) -> CGFloat { base * CGFloat(layout[group].scale) }
+        func offset(_ group: TouchLayout.Group) -> CGPoint {
+            CGPoint(x: CGFloat(layout[group].dx) * bounds.width, y: CGFloat(layout[group].dy) * bounds.height)
+        }
+        let fs = scale(.face), ds = scale(.dpad), ss = scale(.system)
         // Face buttons 1.2 times, the D-pad 1.6 times their original size.
-        let face = 27.6 * s, faceGap = 51.6 * s, arm = 54.4 * s, dpadKey = 48 * s
-        stickRadius = 56 * s
+        let face = 27.6 * fs, faceGap = 51.6 * fs, arm = 54.4 * ds, dpadKey = 48 * ds
+        stickRadius = 56 * base
 
         // Offsets from each bottom corner; the left side mirrors the right.
-        func right(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: area.maxX - x * s, y: area.maxY - y * s) }
-        func left(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: area.minX + x * s, y: area.maxY - y * s) }
-        let faceCenter = right(84, 84)
-        let dpad = left(84, 84)
+        let faceCenter = CGPoint(x: area.maxX - 84 * fs + offset(.face).x, y: area.maxY - 84 * fs + offset(.face).y)
+        let dpad = CGPoint(x: area.minX + 84 * ds + offset(.dpad).x, y: area.maxY - 84 * ds + offset(.dpad).y)
+        let top = CGPoint(x: area.midX + offset(.system).x, y: area.minY + 20 * ss + offset(.system).y)
 
         // Shoulders and triggers wrap around their cluster as ring segments, centred on the 15°
         // (L1/R1) and 50° (L2/R2) lines from its centre, towards the middle of the screen.
-        func ring(_ center: CGPoint, degrees: CGFloat, towardsLeft: Bool) -> Arc {
+        func ring(_ center: CGPoint, degrees: CGFloat, towardsLeft: Bool, scale s: CGFloat) -> Arc {
             let up = degrees * .pi / 180
             return Arc(center: center, inner: 90 * s, outer: 124 * s,
                        mid: towardsLeft ? up - .pi : -up, half: 16 * .pi / 180)
@@ -311,16 +422,17 @@ final class TouchControllerView: UIView {
             case .button(.left): pad.center = CGPoint(x: dpad.x - arm, y: dpad.y)
             case .button(.right): pad.center = CGPoint(x: dpad.x + arm, y: dpad.y)
             // Triggers on the steeper line, above the shoulders as on a controller.
-            case .r2: pad.arc = ring(faceCenter, degrees: 50, towardsLeft: true)
-            case .button(.r1): pad.arc = ring(faceCenter, degrees: 15, towardsLeft: true)
-            case .l2: pad.arc = ring(dpad, degrees: 50, towardsLeft: false)
-            case .button(.l1): pad.arc = ring(dpad, degrees: 15, towardsLeft: false)
+            case .r2: pad.arc = ring(faceCenter, degrees: 50, towardsLeft: true, scale: fs)
+            case .button(.r1): pad.arc = ring(faceCenter, degrees: 15, towardsLeft: true, scale: fs)
+            case .l2: pad.arc = ring(dpad, degrees: 50, towardsLeft: false, scale: ds)
+            case .button(.l1): pad.arc = ring(dpad, degrees: 15, towardsLeft: false, scale: ds)
             // Top centre, as on the controller.
-            case .button(.select): pad.center = CGPoint(x: area.midX - 70 * s, y: area.minY + 20 * s)
-            case .button(.ps): pad.center = CGPoint(x: area.midX, y: area.minY + 20 * s)
-            case .button(.start): pad.center = CGPoint(x: area.midX + 70 * s, y: area.minY + 20 * s)
+            case .button(.select): pad.center = CGPoint(x: top.x - 70 * ss, y: top.y)
+            case .button(.ps): pad.center = top
+            case .button(.start): pad.center = CGPoint(x: top.x + 70 * ss, y: top.y)
             default: break
             }
+            let s: CGFloat = Self.group(of: pad.control).map { scale($0) } ?? base
             switch pad.control {
             case .button(.up), .button(.down), .button(.left), .button(.right):
                 pad.size = CGSize(width: dpadKey, height: dpadKey); pad.round = false
@@ -352,6 +464,59 @@ final class TouchControllerView: UIView {
             }
             pads[index] = pad
         }
+
+        // While editing: each group's outline
+        if isEditing {
+            for group in TouchLayout.Group.allCases {
+                outlines[group]?.frame = bounds
+                outlines[group]?.path = UIBezierPath(roundedRect: frame(of: group).insetBy(dx: -6, dy: -6), cornerRadius: 10).cgPath
+                outlines[group]?.lineWidth = pinched?.group == group || drags.values.contains { $0.group == group } ? 2.5 : 1.5
+            }
+        }
+    }
+
+    /// The area a group covers, its ring segments included.
+    private func frame(of group: TouchLayout.Group) -> CGRect {
+        pads.filter { Self.group(of: $0.control) == group }
+            .map { $0.arc.map { UIBezierPath(cgPath: $0.path).bounds } ?? $0.view.frame }
+            .reduce(CGRect.null) { $0.union($1) }
+    }
+
+    private func group(at point: CGPoint) -> TouchLayout.Group? {
+        TouchLayout.Group.allCases.first { frame(of: $0).insetBy(dx: -16, dy: -16).contains(point) }
+    }
+
+    // MARK: Editing
+
+    private func editBegan(_ finger: ObjectIdentifier, at point: CGPoint) {
+        guard let group = group(at: point) else { return }
+        drags[finger] = (group, point, layout[group])
+        setNeedsLayout()
+    }
+
+    private func editMoved(_ finger: ObjectIdentifier, to point: CGPoint) {
+        guard let drag = drags[finger], bounds.width > 0, bounds.height > 0 else { return }
+        var placement = drag.placement
+        placement.dx = min(0.6, max(-0.6, placement.dx + Double((point.x - drag.start.x) / bounds.width)))
+        placement.dy = min(0.6, max(-0.6, placement.dy + Double((point.y - drag.start.y) / bounds.height)))
+        layout[drag.group] = placement
+        onLayoutChange?(layout)
+    }
+
+    @objc private func pinched(_ gesture: UIPinchGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            // A pinch is two fingers: no drag meanwhile
+            drags.removeAll()
+            if let group = group(at: gesture.location(in: self)) { pinched = (group, layout[group].scale) }
+        case .changed:
+            guard let pinched else { return }
+            layout[pinched.group].scale = min(TouchLayout.groupScales.upperBound, max(TouchLayout.groupScales.lowerBound, pinched.scale * Double(gesture.scale)))
+            onLayoutChange?(layout)
+        default:
+            pinched = nil
+            setNeedsLayout()
+        }
     }
 
     // MARK: Touches
@@ -372,16 +537,29 @@ final class TouchControllerView: UIView {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if isEditing {
+            for touch in touches where pinched == nil { editBegan(ObjectIdentifier(touch), at: touch.location(in: self)) }
+            return
+        }
         for touch in touches { fingerDown(ObjectIdentifier(touch), at: touch.location(in: self), time: touch.timestamp) }
         update()
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if isEditing {
+            for touch in touches { editMoved(ObjectIdentifier(touch), to: touch.location(in: self)) }
+            return
+        }
         for touch in touches { fingerMoved(ObjectIdentifier(touch), to: touch.location(in: self)) }
         update()
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if isEditing {
+            for touch in touches { drags[ObjectIdentifier(touch)] = nil }
+            setNeedsLayout()
+            return
+        }
         for touch in touches { fingerUp(ObjectIdentifier(touch), at: touch.location(in: self), time: touch.timestamp) }
         update()
     }
@@ -405,7 +583,7 @@ final class TouchControllerView: UIView {
             }
             stickPositions[control] = point
         default:
-            haptics.impactOccurred()
+            if layout.haptics { haptics.impactOccurred() }
         }
         setActive(control, true)
     }
@@ -448,7 +626,7 @@ final class TouchControllerView: UIView {
             CATransaction.setDisableActions(true)
             defer { CATransaction.commit() }
             for pad in pads where pad.control == control {
-                let alpha = active ? 0.9 : Self.idleAlpha(of: Self.kind(of: control))
+                let alpha = active ? max(0.9, idleAlpha(of: control)) : idleAlpha(of: control)
                 pad.view.alpha = alpha
                 if pad.arc != nil {
                     pad.shape.opacity = Float(alpha)

@@ -115,6 +115,8 @@ struct ControlsView: View {
     let gameID: String?
     let gameTitle: String?
     @State private var store: ControlsStore
+    @State private var editingLayout = false
+    @State private var ownLayout = false
     @Environment(\.dismiss) private var dismiss
 
     init(gameID: String? = nil, gameTitle: String? = nil) {
@@ -146,6 +148,21 @@ struct ControlsView: View {
             } footer: {
                 Text("Player 1 is normally the on-screen controls together with the first controller connected to the iPhone. Other controllers can be given to other players.")
             }
+            Section {
+                Button("Edit Layout…", systemImage: "rectangle.and.hand.point.up.left") { editingLayout = true }
+                if let gameID, ownLayout {
+                    Button("Use the Layout for All Games", systemImage: "arrow.uturn.backward") {
+                        TouchLayout.removeOwn(gameID)
+                        ownLayout = false
+                    }
+                }
+            } header: {
+                Text("On-Screen Controls")
+            } footer: {
+                Text(gameID == nil
+                     ? "Where the on-screen buttons are, their size and opacity, for all games. A game can have a layout of its own, set on its page."
+                     : ownLayout ? "This game has its own layout of the on-screen buttons." : "This game uses the layout for all games.")
+            }
             if !store.devices.isEmpty {
                 Section("Connected Controllers") {
                     ForEach(store.devices, id: \.self) { device in
@@ -157,6 +174,10 @@ struct ControlsView: View {
         .navigationTitle(gameTitle.map { "Controls: \($0)" } ?? "Controls")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { store.reload() }
+        .onAppear { ownLayout = gameID.map(TouchLayout.hasOwn) ?? false }
+        .fullScreenCover(isPresented: $editingLayout, onDismiss: { ownLayout = gameID.map(TouchLayout.hasOwn) ?? false }) {
+            TouchLayoutEditor(gameID: gameID, gameTitle: gameTitle)
+        }
         .alert("Controls", isPresented: Binding(get: { store.lastError != nil }, set: { if !$0 { store.lastError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {

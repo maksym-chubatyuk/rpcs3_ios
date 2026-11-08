@@ -47,6 +47,11 @@ struct SettingsView: View {
                 } label: {
                     Label("RPCN (Online)", systemImage: "network")
                 }
+                NavigationLink {
+                    LogView()
+                } label: {
+                    Label("Logs", systemImage: "doc.plaintext")
+                }
             }
         }
         Section {

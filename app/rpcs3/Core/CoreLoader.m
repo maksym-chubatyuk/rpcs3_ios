@@ -53,6 +53,7 @@ static struct
 	void (*cancel_install)(void);
 	int (*install_license)(const char*, char*, size_t);
 	const char* (*hdd0_game_dir)(void);
+	const char* (*log_dir)(void);
 	char* (*rpcn)(void);
 	int (*rpcn_set_host)(const char*);
 	int (*rpcn_add_host)(const char*, const char*, char*, size_t);
@@ -148,6 +149,7 @@ bool core_load(char* error, size_t error_size)
 	RESOLVE(cancel_install, "rpcs3_ios_cancel_install");
 	RESOLVE(install_license, "rpcs3_ios_install_license");
 	RESOLVE(hdd0_game_dir, "rpcs3_ios_hdd0_game_dir");
+	RESOLVE(log_dir, "rpcs3_ios_log_dir");
 	RESOLVE(rpcn, "rpcs3_ios_rpcn");
 	RESOLVE(rpcn_set_host, "rpcs3_ios_rpcn_set_host");
 	RESOLVE(rpcn_add_host, "rpcs3_ios_rpcn_add_host");
@@ -270,3 +272,4 @@ int core_rpcn_resend_token(char* message, size_t message_size) { return g_loaded
 int core_rpcn_send_reset_token(const char* username, const char* email, char* message, size_t message_size) { return g_loaded ? g_core.rpcn_send_reset_token(username, email, message, message_size) : -100; }
 int core_rpcn_reset_password(const char* username, const char* token, const char* password, char* message, size_t message_size) { return g_loaded ? g_core.rpcn_reset_password(username, token, password, message, message_size) : -100; }
 int core_rpcn_delete_account(char* message, size_t message_size) { return g_loaded ? g_core.rpcn_delete_account(message, message_size) : -100; }
+const char* core_log_dir(void) { return g_loaded ? g_core.log_dir() : ""; }

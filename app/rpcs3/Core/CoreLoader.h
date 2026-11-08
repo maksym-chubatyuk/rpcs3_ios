@@ -84,6 +84,7 @@ int core_install_packages(const char* paths, void (*progress)(void*, uint32_t, u
 void core_cancel_install(void);
 int core_install_license(const char* path, char* message, size_t message_size);
 const char* core_hdd0_game_dir(void);
+const char* core_log_dir(void);
 
 // RPCN (see rpcs3_ios_rpcn in core/rpcs3_ios.h)
 char* core_rpcn(void);

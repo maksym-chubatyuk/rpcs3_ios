@@ -38,6 +38,9 @@ int rpcs3_ios_initialize(rpcs3_ios_event_fn events);
 // Directory holding config.yml, dev_hdd0 and the other emulator folders (with trailing '/').
 const char* rpcs3_ios_emulator_dir(void);
 
+// Where RPCS3 writes its logs (RPCS3.log, TTY.log).
+const char* rpcs3_ios_log_dir(void);
+
 // Installed firmware version ("" when none). The string stays valid until the next call.
 const char* rpcs3_ios_firmware_version(void);
 

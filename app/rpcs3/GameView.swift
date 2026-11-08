@@ -46,8 +46,23 @@ struct MetalRenderViewRepresentable: UIViewRepresentable {
 }
 
 struct TouchControllerRepresentable: UIViewRepresentable {
-    func makeUIView(context: Context) -> TouchControllerView { TouchControllerView(frame: .zero) }
-    func updateUIView(_ uiView: TouchControllerView, context: Context) {}
+    var layout: TouchLayout
+    /// Editing the layout instead of playing (TouchLayoutEditor)
+    var editing = false
+    var onLayoutChange: ((TouchLayout) -> Void)?
+
+    func makeUIView(context: Context) -> TouchControllerView {
+        let view = TouchControllerView(frame: .zero)
+        updateUIView(view, context: context)
+        return view
+    }
+
+    func updateUIView(_ uiView: TouchControllerView, context: Context) {
+        uiView.layout = layout
+        uiView.isEditing = editing
+        uiView.onLayoutChange = onLayoutChange
+    }
+
     static func dismantleUIView(_ uiView: TouchControllerView, coordinator: ()) { uiView.releaseAll() }
 }
 
@@ -69,7 +84,7 @@ struct GameScreen: View {
                 .ignoresSafeArea()
 
             if showTouch && !request.buildsPPUCache {
-                TouchControllerRepresentable()
+                TouchControllerRepresentable(layout: TouchLayout.load(for: request.game.titleID))
                     .ignoresSafeArea()
             }
 

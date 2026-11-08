@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 /// App-wide state: JIT, the emulator core, firmware and the game library.
 @Observable
@@ -30,6 +31,8 @@ final class Emulator {
 
     /// Set by the test hook (RPCS3_AUTO_BOOT, RPCS3_AUTO_BOOT_MODE): the library starts this by itself.
     var autoBoot: BootRequest?
+    /// Set by the test hook RPCS3_LAYOUT_TEST: the library opens the layout editor.
+    var showsLayoutEditorTest = false
 
     /// JIT pool size, from the RPCS3_JIT_POOL_MB environment variable or 1 GiB.
     let poolMegabytes: Int = {
@@ -211,7 +214,7 @@ final class Emulator {
         firmwareVersion = String(cString: core_firmware_version())
         refreshGames() // with the games installed in dev_hdd0
         runTestHook()
-        log("core ready, emulator dir \(String(cString: core_emulator_dir())), firmware '\(firmwareVersion)'")
+        log("core ready, emulator dir \(String(cString: core_emulator_dir())), firmware '\(firmwareVersion)', logs in \(String(cString: core_log_dir())) (RPCS3.log \(FileManager.default.fileExists(atPath: String(cString: core_log_dir()) + "RPCS3.log")))")
     }
 
     fileprivate func handle(event: Int32) {
@@ -389,6 +392,32 @@ final class Emulator {
                         self.log("rpcn test: sign-in -> \(code) '\(answer)'; restored, username now '\(RPCNAccount.load()?.username ?? "?")'")
                     }
                 }
+            }
+        }
+        // RPCS3_LAYOUT_TEST=1: a sample layout for all games, saved and read back, shown in the editor,
+        // whose window is saved as Documents/layout-editor.png; the layout is removed afterwards
+        if env["RPCS3_LAYOUT_TEST"] != nil {
+            var sample = TouchLayout()
+            sample.opacity = 1.6
+            sample[.face] = .init(dx: -0.08, dy: -0.1, scale: 1.3)
+            sample[.dpad] = .init(dx: 0.05, dy: 0, scale: 0.8)
+            sample[.system] = .init(dx: 0, dy: 0.05, scale: 1)
+            TouchLayout.save(sample, for: nil)
+            TouchLayout.save(TouchLayout(), for: "LAYOUT_TEST")
+            log("layout test: read back \(TouchLayout.load(for: nil) == sample), game falls back \(TouchLayout.load(for: "OTHER0000") == sample), game own \(TouchLayout.hasOwn("LAYOUT_TEST")) \(TouchLayout.load(for: "LAYOUT_TEST") == TouchLayout())")
+            TouchLayout.removeOwn("LAYOUT_TEST")
+            showsLayoutEditorTest = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                let window = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first
+                if let window {
+                    let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                        window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                    }
+                    try? image.pngData()?.write(to: URL.documentsDirectory.appending(path: "layout-editor.png"))
+                }
+                self.log("layout test: editor captured \(window.map { "\($0.bounds.size)" } ?? "no window")")
+                self.showsLayoutEditorTest = false
+                UserDefaults.standard.removeObject(forKey: "touchLayout")
             }
         }
         // RPCS3_REMOVE_DATA=<item>: removes that item (GameData) of the first game, then reports what is left
