@@ -9,7 +9,7 @@ Tick an item off when it works; note what went wrong otherwise.
 
 ## JIT and setup
 
-- [ ] JIT without a Mac: import the pairing file, connect LocalDevVPN, tap Enable JIT (StikJIT inside the app).
+- [x] JIT without a Mac: import the pairing file, connect LocalDevVPN, tap Enable JIT (StikJIT inside the app).
 - [ ] Firmware: install PS3UPDAT.PUP picked in Files ("Choose PS3UPDAT.PUP in Files…") and from the RPCS3 folder.
 - [ ] Add a game folder from Files (iCloud Drive, On My iPhone, an external drive) and an ISO.
 - [ ] A game copied into On My iPhone › RPCS3 › Games shows up after pull to refresh.
