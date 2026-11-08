@@ -46,6 +46,12 @@ int core_setting_set(const char* game, const char* path, const char* value, char
 int core_setting_reset(const char* game, const char* path, char* error, size_t error_size);
 void core_free(void* pointer);
 
+// Game actions (see rpcs3_ios_boot_with and the others in core/rpcs3_ios.h)
+int core_boot_with(const char* path, const char* title_id, int mode, const char* config_file, const char* savestate);
+int core_create_llvm_cache(const char* path, const char* title_id);
+char* core_game_data(const char* title_id, const char* path);
+int core_game_remove(const char* title_id, const char* what);
+
 #ifdef __cplusplus
 }
 #endif

@@ -42,6 +42,9 @@
 #include "Emu/Cell/Modules/cellOskDialog.h"
 #include "Emu/Cell/Modules/cellSaveData.h"
 #include "Emu/Cell/Modules/sceNpTrophy.h"
+#include "Emu/RSX/Overlays/overlay_manager.h"
+#include "Emu/RSX/Overlays/overlay_trophy_notification.h"
+#include "util/video_source.h"
 #include "Input/pad_thread.h"
 #include "Emu/Cell/PPUThread.h"
 #include "Emu/Cell/SPUThread.h"
@@ -60,6 +63,8 @@
 #include <stb_image_write.h>
 
 #import <Foundation/Foundation.h>
+#import <AVFoundation/AVFoundation.h>
+#import <UIKit/UIKit.h>
 #include <mach/mach.h>
 #include <unistd.h>
 #include <os/proc.h>
@@ -69,6 +74,9 @@
 #include <cstdio>
 
 LOG_CHANNEL(ios_log, "iOS");
+
+// The Vulkan device the app renders with (defined below, after the bridge's helpers)
+std::string ios_vulkan_adapter();
 
 namespace
 {
@@ -89,6 +97,71 @@ namespace
 	}
 
 	// The game window: a UIView backed by a CAMetalLayer. MoltenVK presents into the layer.
+	// RPCS3 plays animated save icons (ICON1.PAM) and a game's boot music through a video source,
+	// Qt Multimedia on desktop. None exists here yet: this one never has a frame, so the save
+	// dialog shows the still icon and boot music stays silent (RPCS3 requires a source to exist).
+	class ios_video_source final : public video_source
+	{
+	public:
+		void set_iso_path(const std::string&) override {}
+		void set_video_path(const std::string&, bool) override {}
+		void set_audio_path(const std::string&, bool) override {}
+		void set_active(bool active) override { m_active = active; }
+		bool get_active() const override { return m_active; }
+		bool has_new() const override { return false; }
+		void get_image(std::vector<u8>&, int& w, int& h, int& ch, int& bpp) override { w = h = ch = bpp = 0; }
+
+	private:
+		bool m_active = false;
+	};
+
+	// Trophy popups in the game's picture, through RPCS3's own overlay (as its desktop frontend
+	// does whenever the overlays are running, which they always are here)
+	class ios_trophy_notification final : public TrophyNotificationBase
+	{
+	public:
+		s32 ShowTrophyNotification(const SceNpTrophyDetails& trophy, const std::vector<uchar>& icon) override
+		{
+			if (auto manager = g_fxo->try_get<rsx::overlays::display_manager>())
+			{
+				auto popup = std::make_shared<rsx::overlays::trophy_notification>();
+				return manager->add(popup, false)->show(trophy, icon);
+			}
+
+			return 0;
+		}
+	};
+
+	// Overlay sounds (RPCS3 looks for them in its config folder's sounds/; there are none by default)
+	void play_sound(const std::string& path, std::optional<f32> volume)
+	{
+		NSURL* url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:path.c_str()]];
+
+		if (![NSFileManager.defaultManager fileExistsAtPath:url.path])
+		{
+			return;
+		}
+
+		dispatch_async(dispatch_get_main_queue(), ^{
+			static NSMutableSet<AVAudioPlayer*>* s_playing = [NSMutableSet set];
+			AVAudioPlayer* player = [[AVAudioPlayer alloc] initWithContentsOfURL:url error:nil];
+
+			if (!player)
+			{
+				return;
+			}
+
+			player.volume = volume ? *volume : 1.0f;
+			[s_playing addObject:player];
+			[player play];
+
+			// Kept until it has finished
+			dispatch_after(dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>((player.duration + 1) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+				[s_playing removeObject:player];
+			});
+		});
+	}
+
 	class ios_gs_frame final : public GSFrameBase
 	{
 	public:
@@ -246,6 +319,55 @@ namespace
 		ios_log.notice("Wrote the default input configuration (player 1: the app's controller)");
 	}
 
+	// What a configuration needs to work on iOS (see app/rpcs3/Settings/SettingsPolicy.swift for the
+	// settings the app does not offer). True if something changed.
+	bool apply_ios_requirements(cfg_root& cfg)
+	{
+		bool changed = false;
+		const auto require = [&](auto& setting, auto value)
+		{
+			if (setting.get() != value)
+			{
+				setting.set(value);
+				changed = true;
+			}
+		};
+
+		// Vulkan through MoltenVK is the only renderer
+		require(cfg.video.renderer, video_renderer::vulkan);
+#ifdef HAVE_FAUDIO
+		// cubeb has no iOS backend in RPCS3; FAudio plays through SDL3 (Core Audio)
+		if (cfg.audio.renderer.get() == audio_renderer::cubeb)
+			require(cfg.audio.renderer, audio_renderer::faudio);
+#endif
+		// RPCS3's own dialogs (save data, messages, on-screen keyboard) are the only ones: its Qt
+		// fallbacks do not exist on iOS
+		require(cfg.misc.use_native_interface, true);
+		// Metal compiles the shader interpreter's pipelines for minutes before a game starts
+		if (cfg.video.shadermode.get() == shader_mode::async_with_interpreter || cfg.video.shadermode.get() == shader_mode::interpreter_only)
+			require(cfg.video.shadermode, shader_mode::async_recompiler);
+		// Both make RPCS3 import guest memory into Vulkan buffers (passthrough DMA), which MoltenVK
+		// cannot do: vkCreateBuffer fails for host allocations and the renderer stops
+		require(cfg.video.vk.asynchronous_texture_streaming, false);
+		require(cfg.video.host_label_synchronization, false);
+		// No microphone access (the app has no microphone permission; iOS would end it on first use)
+		require(cfg.audio.microphone_type, microphone_handler::null);
+		// Qt's and SDL's cameras are not available; the fake camera is
+		if (cfg.io.camera.get() == camera_handler::qt || cfg.io.camera.get() == camera_handler::sdl)
+			require(cfg.io.camera, camera_handler::null);
+		// The ASMJIT SPU recompiler exists only for x86
+		if (cfg.core.spu_decoder.get() == spu_decoder_type::asmjit)
+			require(cfg.core.spu_decoder, spu_decoder_type::llvm);
+		// The one GPU (a config from another device names its own)
+		if (const std::string adapter = ios_vulkan_adapter(); !adapter.empty() && cfg.video.vk.adapter.to_string() != adapter)
+		{
+			cfg.video.vk.adapter.from_string(adapter);
+			changed = true;
+		}
+
+		return changed;
+	}
+
 	void create_callbacks()
 	{
 		auto& cb = g_emu_callbacks;
@@ -319,7 +441,17 @@ namespace
 		cb.close_gs_frame = []() {};
 		cb.get_gs_frame = []() -> std::unique_ptr<GSFrameBase> { return std::make_unique<ios_gs_frame>(); };
 		cb.replace_gs_frame = []() -> std::unique_ptr<GSFrameBase> { return std::make_unique<ios_gs_frame>(); };
-		cb.init_gs_render = [](utils::serial* ar) { rsx::create_render_thread(ar); };
+		cb.init_gs_render = [](utils::serial* ar)
+		{
+			// The config a game boots with may come from anywhere (RPCS3's defaults, a game's own
+			// settings, a file from desktop): what iOS needs applies before the renderer starts
+			if (apply_ios_requirements(g_cfg))
+			{
+				ios_log.warning("Adjusted this boot's configuration for iOS");
+			}
+
+			rsx::create_render_thread(ar);
+		};
 
 		cb.get_camera_handler = []() -> std::shared_ptr<camera_handler_base> { return std::make_shared<null_camera_handler>(); };
 		cb.get_music_handler = []() -> std::shared_ptr<music_handler_base> { return std::make_shared<null_music_handler>(); };
@@ -331,9 +463,12 @@ namespace
 			switch (g_cfg.audio.renderer.get())
 			{
 			case audio_renderer::null: result = std::make_shared<NullAudioBackend>(); break;
-			case audio_renderer::cubeb: result = std::make_shared<CubebBackend>(); break;
 #ifdef HAVE_FAUDIO
+			// cubeb has no iOS backend in RPCS3: a config asking for it gets FAudio
+			case audio_renderer::cubeb:
 			case audio_renderer::faudio: result = std::make_shared<FAudioBackend>(); break;
+#else
+			case audio_renderer::cubeb: result = std::make_shared<CubebBackend>(); break;
 #endif
 			default: result = std::make_shared<NullAudioBackend>(); break;
 			}
@@ -351,9 +486,11 @@ namespace
 		{
 			switch (static_cast<audio_renderer>(renderer))
 			{
-			case audio_renderer::cubeb: return std::make_shared<cubeb_enumerator>();
 #ifdef HAVE_FAUDIO
+			case audio_renderer::cubeb:
 			case audio_renderer::faudio: return std::make_shared<faudio_enumerator>();
+#else
+			case audio_renderer::cubeb: return std::make_shared<cubeb_enumerator>();
 #endif
 			default: return std::make_shared<null_enumerator>();
 			}
@@ -365,7 +502,7 @@ namespace
 		cb.get_save_dialog = []() -> std::unique_ptr<SaveDialogBase> { return nullptr; };
 		cb.get_sendmessage_dialog = []() -> std::shared_ptr<SendMessageDialogBase> { return nullptr; };
 		cb.get_recvmessage_dialog = []() -> std::shared_ptr<RecvMessageDialogBase> { return nullptr; };
-		cb.get_trophy_notification_dialog = []() -> std::unique_ptr<TrophyNotificationBase> { return nullptr; };
+		cb.get_trophy_notification_dialog = []() -> std::unique_ptr<TrophyNotificationBase> { return std::make_unique<ios_trophy_notification>(); };
 
 		// The overlays' texts (home menu, dialogs...), in English; the Qt frontend's table, generated
 		cb.get_localized_string = [](localized_string_id id, const char* arg) { return localized_string(id, arg); };
@@ -384,7 +521,7 @@ namespace
 			return vfs::get(fmt::format("/dev_hdd0/photo/%s", vfs::escape(title, true)));
 		};
 
-		cb.play_sound = [](const std::string&, std::optional<f32>) {};
+		cb.play_sound = [](const std::string& path, std::optional<f32> volume) { play_sound(path, volume); };
 		cb.get_image_info = [](const std::string&, std::string&, s32&, s32&, s32&) { return false; };
 		cb.get_scaled_image = [](const std::string&, s32, s32, s32&, s32&, u8*, bool) { return false; };
 
@@ -414,10 +551,14 @@ namespace
 		};
 
 		cb.add_breakpoint = [](u32) {};
-		cb.display_sleep_control_supported = []() { return false; };
-		cb.enable_display_sleep = [](bool) {};
+		// "Prevent display sleep while running games": the screen stays on while a game runs
+		cb.display_sleep_control_supported = []() { return true; };
+		cb.enable_display_sleep = [](bool enabled)
+		{
+			dispatch_async(dispatch_get_main_queue(), ^{ UIApplication.sharedApplication.idleTimerDisabled = !enabled; });
+		};
 		cb.check_microphone_permissions = []() {};
-		cb.make_video_source = []() -> std::unique_ptr<video_source> { return nullptr; };
+		cb.make_video_source = []() -> std::unique_ptr<video_source> { return std::make_unique<ios_video_source>(); };
 		cb.enable_gamemode = [](bool) {};
 		cb.get_database_config = [](const std::string&) { return std::string(); };
 	}
@@ -656,23 +797,8 @@ extern "C" int rpcs3_ios_initialize(rpcs3_ios_event_fn events)
 	use_bundled_icons();
 	add_default_input_config();
 
-	// Audio through FAudio (SDL3 / CoreAudio): cubeb has no iOS backend here
-#ifdef HAVE_FAUDIO
-	// A config saved before these iOS defaults existed: fix it on disk too, as booting a game
-	// reloads the global config
-	bool fixed = false;
-
-	if (g_cfg.audio.renderer.get() == audio_renderer::cubeb)
-	{
-		g_cfg.audio.renderer.set(audio_renderer::faudio);
-		fixed = true;
-	}
-
-	if (g_cfg.video.shadermode.get() == shader_mode::async_with_interpreter || g_cfg.video.shadermode.get() == shader_mode::interpreter_only)
-	{
-		g_cfg.video.shadermode.set(shader_mode::async_recompiler);
-		fixed = true;
-	}
+	// The global config: what iOS needs, saved, as booting a game reloads it from disk
+	bool fixed = apply_ios_requirements(g_cfg);
 
 	// Test hook (scripts/run.sh PERF_OVERLAY=1): RPCS3's performance overlay, saved in the config
 	if (const char* overlay = std::getenv("RPCS3_PERF_OVERLAY"); overlay && g_cfg.video.perf_overlay.enabled.get() != (overlay[0] == '1'))
@@ -681,17 +807,10 @@ extern "C" int rpcs3_ios_initialize(rpcs3_ios_event_fn events)
 		fixed = true;
 	}
 
-	if (!adapter.empty() && g_cfg.video.vk.adapter.to_string() != adapter)
-	{
-		g_cfg.video.vk.adapter.from_string(adapter);
-		fixed = true;
-	}
-
 	if (fixed)
 	{
 		Emulator::SaveSettings(g_cfg.to_string(), "");
 	}
-#endif
 
 #ifdef HAVE_SDL3
 	create_virtual_pad();
@@ -873,7 +992,14 @@ extern "C" void rpcs3_ios_set_render_view(void* uiview, int32_t width, int32_t h
 	g_view_refresh_bits = std::bit_cast<u64>(refresh_rate > 0 ? refresh_rate : 60.0);
 }
 
+int ios_boot_game(const std::string& path, const std::string& title_id, cfg_mode mode, const std::string& config_path);
+
 extern "C" int rpcs3_ios_boot(const char* path)
+{
+	return ios_boot_game(path ? path : "", "", cfg_mode::custom, "");
+}
+
+int ios_boot_game(const std::string& path, const std::string& title_id, cfg_mode mode, const std::string& config_path)
 {
 	if (!g_view)
 	{
@@ -882,7 +1008,7 @@ extern "C" int rpcs3_ios_boot(const char* path)
 	}
 
 	log_address_space("before boot");
-	const game_boot_result result = Emu.BootGame(path ? path : "", "", false);
+	const game_boot_result result = Emu.BootGame(path, title_id, false, mode, config_path);
 	log_address_space("after boot");
 
 	// Test hook (scripts/run.sh PS_AFTER=<seconds>): presses the PS button once, as the touch controller does

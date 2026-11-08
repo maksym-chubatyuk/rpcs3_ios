@@ -90,6 +90,9 @@ namespace
 			return fmt::format("%s", shader_mode::async_recompiler);
 		if (path == std::vector<std::string>{"Video", "Vulkan", "Adapter"})
 			return ios_vulkan_adapter();
+		// RPCS3 makes up a new name each time as the default: the current one is it
+		if (path == std::vector<std::string>{"System", "System Name"})
+			return setting.to_string();
 
 		return setting.def_to_string();
 	}

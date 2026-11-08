@@ -31,21 +31,6 @@ struct SettingsLayout: Decodable {
         return layout
     }()
 
-    /// Settings the desktop dialog shows that do nothing on iOS: one renderer, one GPU, no
-    /// desktop window or Linux GameMode.
-    static let hidden: Set<[String]> = [
-        ["Video", "Renderer"],
-        ["Video", "Vulkan", "Adapter"],
-        ["Video", "Vulkan", "Exclusive Fullscreen Mode"],
-        ["Miscellaneous", "Enable GameMode"],
-        ["Miscellaneous", "Start games in fullscreen mode"],
-        ["Miscellaneous", "Prevent display sleep while running games"],
-    ]
-
-    /// Choices that cannot work on iOS (cubeb has no iOS backend).
-    static let unavailableOptions: [[String]: Set<String>] = [
-        ["Audio", "Renderer"]: ["Cubeb"],
-    ]
 }
 
 /// One setting as the core describes it (rpcs3_ios_settings in core/rpcs3_ios.h).
@@ -94,8 +79,9 @@ final class SettingsStore {
     /// Settings no tab shows, by their place in the configuration.
     var otherSettings: [Setting] {
         let shown = Set(SettingsLayout.shared.tabs.flatMap { $0.groups.flatMap { $0.items.map(\.path) } })
+            .union(SettingsPolicy.placed.keys)
         return settings.values
-            .filter { !shown.contains($0.path) && !SettingsLayout.hidden.contains($0.path) }
+            .filter { !shown.contains($0.path) && !SettingsPolicy.isHidden($0.path) }
             .sorted { $0.path.lexicographicallyPrecedes($1.path) }
     }
 

@@ -28,8 +28,8 @@ final class Emulator {
     private(set) var hasPairingFile = OnDeviceJIT.hasPairingFile
     var isRunning = false
 
-    /// Set by the test hook (RPCS3_AUTO_BOOT): the library opens this game by itself.
-    var autoBoot: Game?
+    /// Set by the test hook (RPCS3_AUTO_BOOT, RPCS3_AUTO_BOOT_MODE): the library starts this by itself.
+    var autoBoot: BootRequest?
 
     /// JIT pool size, from the RPCS3_JIT_POOL_MB environment variable or 1 GiB.
     let poolMegabytes: Int = {
@@ -216,7 +216,14 @@ final class Emulator {
     fileprivate func handle(event: Int32) {
         switch event {
         case 2, 4: isRunning = true      // run, resume
-        case 5: isRunning = false; releaseGameAccess()  // stop
+        case 5:  // stop
+            isRunning = false
+            releaseGameAccess()
+            if let game = buildingCache {
+                buildingCache = nil
+                log("PPU cache of \(game.title) finished")
+                lastMessage = "The PPU cache of \(game.title) is built."
+            }
         case 6: lastMessage = "This game needs the PS3 firmware. Install PS3UPDAT.PUP first."
         default: break
         }
@@ -228,6 +235,10 @@ final class Emulator {
     /// value for one, checks it, then lets it follow the global settings again. Results in the app log.
     private func settingsSelfTest(game: String) {
         let path = ["Video", "Frame limit"]
+        if let pointer = core_settings(nil) {
+            try? Data(String(cString: pointer).utf8).write(to: URL.documentsDirectory.appending(path: "settings-dump.json"))
+            core_free(pointer)
+        }
         let global = SettingsStore()
         let shown = SettingsLayout.shared.tabs.flatMap { $0.groups.flatMap(\.items) }.filter { global.setting($0.path) != nil }.count
         log("settings test: \(global.settings.count) settings, \(shown) of them in \(SettingsLayout.shared.tabs.count) tabs, \(global.otherSettings.count) under Other")
@@ -242,6 +253,9 @@ final class Emulator {
         if let set { store.reset(set) }
         let after = store.setting(path)
         log("settings test: after reset \(after?.value ?? "?") (overridden \(after?.overridden ?? false)), error \(store.lastError ?? "none")")
+        if let neptunia = games.first(where: { $0.titleID == game }), let data = gameData(neptunia) {
+            log("game data test: own settings \(data.customConfig), shaders \(data.shaderCache), PPU \(data.ppuCache), SPU \(data.spuCache), HDD1 \(data.hdd1Cache), saves \(data.saveData), installed \(data.installedData), savestates \(data.savestates.count), resolutions \(neptunia.numbers["RESOLUTION"] ?? -1), icon \(neptunia.iconURL != nil)")
+        }
     }
 
     /// For scripts/run.sh: RPCS3_AUTO_FIRMWARE=1 installs Documents/PS3UPDAT.PUP when no
@@ -250,6 +264,17 @@ final class Emulator {
         let env = ProcessInfo.processInfo.environment
         if let game = env["RPCS3_SETTINGS_SELFTEST"], !game.isEmpty {
             settingsSelfTest(game: game)
+        }
+        // RPCS3_REMOVE_DATA=<item>: removes that item (GameData) of the first game, then reports what is left
+        if let item = env["RPCS3_REMOVE_DATA"], let game = games.first, let before = gameData(game) {
+            let ok = removeData(item, of: game)
+            let after = gameData(game)
+            log("test hook: removed \(item) of \(game.title): \(ok); PPU \(before.ppuCache) -> \(after?.ppuCache ?? 0), caches \(before.caches) -> \(after?.caches ?? 0)")
+        }
+        // RPCS3_BUILD_CACHE=<folder in Games>: builds that game's PPU cache (Build PPU Cache Now)
+        if let name = env["RPCS3_BUILD_CACHE"], let game = games.first(where: { $0.url.lastPathComponent == name }) {
+            log("test hook: building the PPU cache of \(game.title)")
+            autoBoot = BootRequest(game: game, buildsPPUCache: true)
         }
         let bootName = env["RPCS3_AUTO_BOOT"]
 
@@ -261,7 +286,9 @@ final class Emulator {
                 let delay = Double(env["RPCS3_AUTO_BOOT_DELAY"] ?? "") ?? 0
                 log("test hook: booting \(name) in \(delay) s")
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    MainActor.assumeIsolated { self.autoBoot = game }
+                    // RPCS3_AUTO_BOOT_MODE: 1 global settings, 2 defaults (BootRequest.Mode)
+                    let mode = BootRequest.Mode(rawValue: Int32(env["RPCS3_AUTO_BOOT_MODE"] ?? "") ?? 0) ?? .normal
+                    MainActor.assumeIsolated { self.autoBoot = BootRequest(game: game, mode: mode) }
                 }
             } else {
                 log("test hook: no game named \(name) in Games")
@@ -328,23 +355,49 @@ final class Emulator {
         refreshGames()
     }
 
-    /// Returns nil when the game started, otherwise a reason.
-    func boot(_ game: Game) -> String? {
-        guard coreReady else { return "The emulator is not ready." }
+    /// Deletes a game copied into the app's Games folder (its saves and settings stay).
+    func deleteGameFiles(_ game: Game) {
+        guard !game.isExternal, game.url.path.hasPrefix(gamesDirectory.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: game.url)
+            log("deleted \(game.url.lastPathComponent)")
+        } catch {
+            lastMessage = "The game could not be deleted: \(error.localizedDescription)"
+        }
+        refreshGames()
+    }
 
-        // A game chosen in the Files app stays readable only while its security scope is held
-        var url = game.url
-        if let bookmark = game.bookmark {
-            var stale = false
-            guard let resolved = try? URL(resolvingBookmarkData: bookmark, bookmarkDataIsStale: &stale) else {
-                return "The game's location is no longer available. Add it again from the Files app."
-            }
-            url = resolved
-            if url.startAccessingSecurityScopedResource() { scopedGameURL = url }
+    /// Returns nil when the game started, otherwise a reason.
+    func boot(_ request: BootRequest) -> String? {
+        guard coreReady else { return "The emulator is not ready." }
+        let game = request.game
+        guard let url = accessGame(game) else {
+            return "The game's location is no longer available. Add it again from the Files app."
         }
 
-        log("booting \(game.title) (\(game.titleID ?? "?")) from \(url.path)")
-        let result = url.withUnsafeFileSystemRepresentation { core_boot($0) }
+        // A config file from the Files app is read at boot: copied where RPCS3 can always reach it
+        var configPath = ""
+        if let file = request.configFile {
+            let scoped = file.startAccessingSecurityScopedResource()
+            defer { if scoped { file.stopAccessingSecurityScopedResource() } }
+            let copy = FileManager.default.temporaryDirectory.appending(path: "boot-config.yml")
+            try? FileManager.default.removeItem(at: copy)
+            guard (try? FileManager.default.copyItem(at: file, to: copy)) != nil else {
+                releaseGameAccess()
+                return "The configuration file could not be read."
+            }
+            configPath = copy.path
+        }
+
+        let result: Int32
+        if request.buildsPPUCache {
+            log("building the PPU cache of \(game.title)")
+            result = core_create_llvm_cache(url.path, game.titleID ?? "")
+            if result == 0 { buildingCache = game }
+        } else {
+            log("booting \(game.title) (\(game.titleID ?? "?")) from \(url.path), mode \(request.mode), savestate \(request.savestate ?? "none")")
+            result = core_boot_with(url.path, game.titleID ?? "", request.mode.rawValue, configPath, request.savestate ?? "")
+        }
         if result == 0 {
             isRunning = true
             return nil
@@ -353,6 +406,41 @@ final class Emulator {
         log("boot failed: \(result)")
         return "The game did not start (error \(result)). See RPCS3.log."
     }
+
+    /// The game's folder or ISO, readable until the game stops (a game chosen in the Files app is
+    /// readable only while its security scope is held).
+    private func accessGame(_ game: Game) -> URL? {
+        guard let bookmark = game.bookmark else { return game.url }
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: bookmark, bookmarkDataIsStale: &stale) else { return nil }
+        if url.startAccessingSecurityScopedResource() { scopedGameURL = url }
+        return url
+    }
+
+    // MARK: Game actions (desktop's game menu)
+
+    /// The game whose PPU cache is being built, if any.
+    private(set) var buildingCache: Game?
+
+    func gameData(_ game: Game) -> GameData? {
+        guard let id = game.titleID, let pointer = core_game_data(id, game.url.path) else { return nil }
+        defer { core_free(pointer) }
+        return try? JSONDecoder().decode(GameData.self, from: Data(String(cString: pointer).utf8))
+    }
+
+    /// Removes one of GameData's items ("config", "input", "shaders", "ppu", "spu", "hdd1",
+    /// "caches", "savestates", "savedata", "installed").
+    @discardableResult
+    func removeData(_ item: String, of game: Game) -> Bool {
+        guard let id = game.titleID, !isRunning, buildingCache == nil else { return false }
+        let ok = core_game_remove(id, item) == 0
+        log("removing \(item) of \(game.title): \(ok ? "done" : "failed")")
+        if !ok { lastMessage = "Could not remove all of it. See RPCS3.log." }
+        return ok
+    }
+
+    func pause() { core_pause() }
+    func resume() { core_resume() }
 
     func stop() {
         core_stop()
@@ -366,6 +454,47 @@ final class Emulator {
     }
 
     func dismissMessage() { lastMessage = nil }
+}
+
+/// How to start a game: the choices of desktop's game menu.
+struct BootRequest: Identifiable, Hashable {
+    enum Mode: Int32 {
+        case normal = 0      // the game's own settings if it has any, else the global ones
+        case global = 1      // the global settings, even if the game has its own
+        case defaults = 2    // RPCS3's default settings
+        case configFile = 3  // a config file chosen in the Files app
+    }
+
+    let game: Game
+    var mode: Mode = .normal
+    var configFile: URL?
+    /// A .SAVESTAT file to resume.
+    var savestate: String?
+    /// Only compile the game's PPU code ("Create LLVM Cache"): RPCS3 shows its progress on the
+    /// game screen and stops when done.
+    var buildsPPUCache = false
+
+    var id: String { "\(game.id)|\(mode.rawValue)|\(configFile?.path ?? "")|\(savestate ?? "")|\(buildsPPUCache)" }
+}
+
+/// What a game stores (rpcs3_ios_game_data in core/rpcs3_ios.h).
+struct GameData: Decodable {
+    struct Savestate: Decodable, Hashable, Identifiable {
+        let path: String
+        let date: Int64
+        let size: UInt64
+        let compatible: Bool
+        var id: String { path }
+    }
+
+    let customConfig: Bool
+    let customInput: Bool
+    let shaderCache, ppuCache, spuCache, hdd1Cache: UInt64
+    let saveData, installedData, savestatesSize: UInt64
+    let lastSavestate: String
+    let savestates: [Savestate]
+
+    var caches: UInt64 { shaderCache + ppuCache + spuCache + hdd1Cache }
 }
 
 // C callbacks from the core (any thread).

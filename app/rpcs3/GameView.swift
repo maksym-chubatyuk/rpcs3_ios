@@ -54,8 +54,11 @@ struct TouchControllerRepresentable: UIViewRepresentable {
 /// Full-screen game with the on-screen controller over it, and a small bar to hide the
 /// controller or stop the game.
 struct GameScreen: View {
-    let game: Emulator.Game
+    let request: BootRequest
     let onClose: () -> Void
+    @Environment(\.scenePhase) private var scenePhase
+    /// Paused because the app left the screen (iOS allows no GPU work in the background)
+    @State private var pausedInBackground = false
     @State private var error: String?
     @State private var booted = false
     @State private var showTouch = !PadBridge.shared.hasPhysicalController
@@ -65,18 +68,22 @@ struct GameScreen: View {
             MetalRenderViewRepresentable()
                 .ignoresSafeArea()
 
-            if showTouch {
+            if showTouch && !request.buildsPPUCache {
                 TouchControllerRepresentable()
                     .ignoresSafeArea()
             }
 
             HStack(spacing: 18) {
-                Button {
-                    showTouch.toggle()
-                } label: {
-                    Image(systemName: showTouch ? "gamecontroller.fill" : "gamecontroller")
+                if request.buildsPPUCache {
+                    Text("Building the PPU cache")
+                } else {
+                    Button {
+                        showTouch.toggle()
+                    } label: {
+                        Image(systemName: showTouch ? "gamecontroller.fill" : "gamecontroller")
+                    }
+                    .accessibilityLabel(showTouch ? "Hide on-screen controller" : "Show on-screen controller")
                 }
-                .accessibilityLabel(showTouch ? "Hide on-screen controller" : "Show on-screen controller")
 
                 Button {
                     Emulator.shared.stop()
@@ -96,6 +103,22 @@ struct GameScreen: View {
         .background(.black)
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
+        // The game stopped by itself (Exit Game in RPCS3's home menu, the end of a PPU cache build)
+        .onChange(of: Emulator.shared.isRunning) { wasRunning, running in
+            if booted && wasRunning && !running { onClose() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .background where Emulator.shared.isRunning && !pausedInBackground:
+                Emulator.shared.pause()
+                pausedInBackground = true
+            case .active where pausedInBackground:
+                Emulator.shared.resume()
+                pausedInBackground = false
+            default:
+                break
+            }
+        }
         .onChange(of: showTouch) { _, visible in
             PadBridge.shared.touchVisible = visible
             if !visible { PadBridge.shared.touch = PadState() }
@@ -115,7 +138,7 @@ struct GameScreen: View {
             try? await Task.sleep(for: .milliseconds(600))
             guard !booted else { return }
             booted = true
-            if let reason = Emulator.shared.boot(game) {
+            if let reason = Emulator.shared.boot(request) {
                 error = reason
             }
         }

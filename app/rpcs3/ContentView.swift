@@ -7,8 +7,10 @@ struct ContentView: View {
     /// (setting `showImporter` to false) before it hands over the chosen file.
     @State private var importKind: ImportKind = .firmware
     @State private var showImporter = false
-    @State private var playing: Emulator.Game?
+    @State private var playing: BootRequest?
     @State private var settingsFor: SettingsTarget?
+    @State private var detailsFor: Game?
+    @Environment(\.openURL) private var openURL
 
     /// Whose settings are open: the global ones, or a game's own.
     struct SettingsTarget: Identifiable {
@@ -88,15 +90,21 @@ struct ContentView: View {
                 Text(emulator.lastMessage ?? "")
             }
         }
-        .onChange(of: emulator.autoBoot) { _, game in
-            if let game {
+        .onChange(of: emulator.autoBoot) { _, request in
+            if let request {
                 emulator.autoBoot = nil
                 emulator.dismissMessage()
-                playing = game
+                playing = request
             }
         }
-        .fullScreenCover(item: $playing) { game in
-            GameScreen(game: game) { playing = nil }
+        .fullScreenCover(item: $playing) { request in
+            GameScreen(request: request) { playing = nil }
+        }
+        .sheet(item: $detailsFor) { game in
+            GameDetailView(game: game) { request in
+                // After the sheet has gone, so the game screen can come up
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { playing = request }
+            }
         }
         .sheet(item: $settingsFor) { target in
             SettingsView(store: SettingsStore(gameID: target.gameID, gameTitle: target.title))
@@ -115,44 +123,106 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
             ForEach(emulator.games) { game in
-                Button {
-                    playing = game
-                } label: {
-                    HStack {
-                        Image(systemName: game.url.pathExtension.lowercased() == "iso" ? "opticaldisc" : "folder")
-                            .foregroundStyle(.secondary)
-                        VStack(alignment: .leading) {
-                            Text(game.title)
-                                .foregroundStyle(.primary)
-                            Text([game.titleID, game.isExternal ? "from Files" : nil].compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .disabled(emulator.firmwareVersion.isEmpty)
-                .swipeActions {
-                    if game.isExternal {
-                        Button("Remove", role: .destructive) { emulator.remove(game) }
-                    }
-                }
-                .swipeActions(edge: .leading) {
-                    if let id = game.titleID {
-                        Button("Settings", systemImage: "gearshape") { settingsFor = SettingsTarget(gameID: id, title: game.title) }
-                            .tint(.gray)
-                    }
-                }
-                .contextMenu {
-                    if let id = game.titleID {
-                        Button("Settings for This Game", systemImage: "gearshape") { settingsFor = SettingsTarget(gameID: id, title: game.title) }
-                    }
-                }
+                gameRow(game)
             }
         } header: {
             Text("Games")
         } footer: {
             if emulator.firmwareVersion.isEmpty && !emulator.games.isEmpty {
                 Text("Install the firmware to play.")
+            }
+        }
+    }
+
+    private func gameRow(_ game: Game) -> some View {
+        let canPlay = !emulator.firmwareVersion.isEmpty
+        return HStack(spacing: 12) {
+            Button {
+                playing = BootRequest(game: game)
+            } label: {
+                HStack(spacing: 12) {
+                    GameIcon(game: game)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(game.title)
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                        Text([game.titleID, game.isExternal ? "from Files" : nil].compactMap { $0 }.joined(separator: " · "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canPlay)
+
+            Button {
+                detailsFor = game
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.title3)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Details of \(game.title)")
+        }
+        .swipeActions {
+            if game.isExternal {
+                Button("Remove", role: .destructive) { emulator.remove(game) }
+            }
+        }
+        .swipeActions(edge: .leading) {
+            if let id = game.titleID {
+                Button("Settings", systemImage: "gearshape") { settingsFor = SettingsTarget(gameID: id, title: game.title) }
+                    .tint(.gray)
+            }
+        }
+        .contextMenu {
+            gameMenu(game, canPlay: canPlay)
+        } preview: {
+            VStack(alignment: .leading, spacing: 8) {
+                GameIcon(game: game, width: 240)
+                Text(game.title).font(.headline)
+                if let id = game.titleID { Text(id).font(.subheadline).foregroundStyle(.secondary) }
+            }
+            .padding()
+        }
+    }
+
+    /// The quick actions of desktop's game menu; everything else is on the game's page.
+    @ViewBuilder private func gameMenu(_ game: Game, canPlay: Bool) -> some View {
+        let data = emulator.gameData(game)
+        Section {
+            Button("Play", systemImage: "play.fill") { playing = BootRequest(game: game) }
+                .disabled(!canPlay)
+            if let last = data?.lastSavestate, !last.isEmpty {
+                Button("Resume Latest Savestate", systemImage: "clock.arrow.circlepath") {
+                    playing = BootRequest(game: game, savestate: last)
+                }
+                .disabled(!canPlay)
+            }
+            if data?.customConfig == true {
+                Button("Play with Global Settings", systemImage: "play.circle") { playing = BootRequest(game: game, mode: .global) }
+                    .disabled(!canPlay)
+            }
+            Button("Play with Default Settings", systemImage: "play.circle") { playing = BootRequest(game: game, mode: .defaults) }
+                .disabled(!canPlay)
+        }
+        Section {
+            if let id = game.titleID {
+                Button("Game Settings", systemImage: "gearshape") { settingsFor = SettingsTarget(gameID: id, title: game.title) }
+            }
+            Button("Details", systemImage: "info.circle") { detailsFor = game }
+        }
+        Section {
+            if let id = game.titleID {
+                Button("Copy Serial", systemImage: "doc.on.doc") { UIPasteboard.general.string = id }
+                if let url = URL(string: "https://rpcs3.net/compatibility?g=\(id)") {
+                    Button("Check Compatibility", systemImage: "safari") { openURL(url) }
+                }
+            }
+            if game.isExternal {
+                Button("Remove from Library", systemImage: "minus.circle", role: .destructive) { emulator.remove(game) }
             }
         }
     }

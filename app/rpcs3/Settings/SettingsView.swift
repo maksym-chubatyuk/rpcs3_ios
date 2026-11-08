@@ -72,7 +72,7 @@ struct SettingsView: View {
             ContentUnavailableView.search(text: query)
         }
         ForEach(matches, id: \.item.path) { match in
-            if let setting = store.setting(match.item.path), !SettingsLayout.hidden.contains(match.item.path) {
+            if let setting = store.setting(match.item.path), !SettingsPolicy.isHidden(match.item.path) {
                 Section(match.tab) {
                     SettingRow(store: store, setting: setting, label: match.item.label, description: match.item.description)
                 }
@@ -81,7 +81,7 @@ struct SettingsView: View {
     }
 
     private func changedCount(in tab: SettingsLayout.Tab) -> Int {
-        tab.groups.flatMap(\.items).filter { store.setting($0.path)?.isChanged == true && !SettingsLayout.hidden.contains($0.path) }.count
+        tab.groups.flatMap(\.items).filter { store.setting($0.path)?.isChanged == true && !SettingsPolicy.isHidden($0.path) }.count
     }
 
     static func symbol(for tab: String) -> String {
@@ -108,7 +108,10 @@ struct SettingsTabView: View {
     var body: some View {
         List {
             ForEach(tab.groups, id: \.self) { group in
-                let rows = group.items.filter { !SettingsLayout.hidden.contains($0.path) }
+                let placed = SettingsPolicy.placed.filter { $0.value.tab == tab.title && $0.value.group == group.title }
+                    .sorted { $0.value.label < $1.value.label }
+                    .map { SettingsLayout.Item(path: $0.key, label: $0.value.label, description: "") }
+                let rows = (group.items + placed).filter { !SettingsPolicy.isHidden($0.path) }
                 if !rows.isEmpty {
                     Section(group.title) {
                         ForEach(rows, id: \.path) { item in
@@ -207,15 +210,25 @@ struct SettingRow: View {
     }
 
     @ViewBuilder private var control: some View {
+        switch SettingsPolicy.editor(for: setting.path) {
+        case .consoleClock:
+            ConsoleClockEditor(setting: setting, title: title) { store.set(setting, to: $0) }
+        case .color:
+            ColorEditor(setting: setting, title: title) { store.set(setting, to: $0) }
+        case nil:
+            typeControl
+        }
+    }
+
+    @ViewBuilder private var typeControl: some View {
         switch setting.type {
         case .bool:
             Toggle(isOn: Binding(get: { setting.value == "true" }, set: { store.set(setting, to: $0 ? "true" : "false") })) {
                 title
             }
         case .enum:
-            let unavailable = SettingsLayout.unavailableOptions[setting.path] ?? []
             Picker(selection: Binding(get: { setting.value }, set: { store.set(setting, to: $0) })) {
-                ForEach((setting.options ?? []).filter { !unavailable.contains($0) || $0 == setting.value }, id: \.self) { option in
+                ForEach(SettingsPolicy.options(of: setting), id: \.self) { option in
                     Text(option).tag(option)
                 }
             } label: {
@@ -316,5 +329,57 @@ private struct NumberField<Title: View>: View {
         while text.hasSuffix("0") { text.removeLast() }
         if text.hasSuffix(".") { text.removeLast() }
         return text
+    }
+}
+
+/// The PS3's clock, which RPCS3 keeps as an offset in seconds from the real time.
+private struct ConsoleClockEditor<Title: View>: View {
+    let setting: Setting
+    let title: Title
+    let commit: (String) -> Void
+
+    private var offset: TimeInterval { TimeInterval(Int64(setting.value) ?? 0) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            DatePicker(selection: Binding(
+                get: { Date().addingTimeInterval(offset) },
+                set: { commit(String(Int64($0.timeIntervalSinceNow.rounded()))) }
+            )) {
+                title
+            }
+            if offset != 0 {
+                Button("Use the Current Time") { commit("0") }
+                    .font(.caption)
+            }
+        }
+    }
+}
+
+/// An RGBA color, written by RPCS3 as #RRGGBBAA.
+private struct ColorEditor<Title: View>: View {
+    let setting: Setting
+    let title: Title
+    let commit: (String) -> Void
+
+    var body: some View {
+        ColorPicker(selection: Binding(get: { Self.color(setting.value) }, set: { commit(Self.hex($0)) }), supportsOpacity: true) {
+            title
+        }
+    }
+
+    static func color(_ hex: String) -> Color {
+        let digits = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard digits.count == 8, let value = UInt32(digits, radix: 16) else { return .white }
+        return Color(.sRGB,
+                     red: Double((value >> 24) & 0xFF) / 255, green: Double((value >> 16) & 0xFF) / 255,
+                     blue: Double((value >> 8) & 0xFF) / 255, opacity: Double(value & 0xFF) / 255)
+    }
+
+    static func hex(_ color: Color) -> String {
+        let resolved = color.resolve(in: EnvironmentValues())
+        let channels = [resolved.red, resolved.green, resolved.blue, resolved.opacity]
+            .map { Int((min(max(Double($0), 0), 1) * 255).rounded()) }
+        return "#" + channels.map { String(format: "%02X", $0) }.joined()
     }
 }

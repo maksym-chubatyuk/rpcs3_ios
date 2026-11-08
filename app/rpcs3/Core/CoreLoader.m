@@ -24,6 +24,10 @@ static struct
 	int (*setting_set)(const char*, const char*, const char*, char*, size_t);
 	int (*setting_reset)(const char*, const char*, char*, size_t);
 	void (*free_memory)(void*);
+	int (*boot_with)(const char*, const char*, int, const char*, const char*);
+	int (*create_llvm_cache)(const char*, const char*);
+	char* (*game_data)(const char*, const char*);
+	int (*game_remove)(const char*, const char*);
 } g_core;
 
 static bool g_loaded;
@@ -79,6 +83,10 @@ bool core_load(char* error, size_t error_size)
 	RESOLVE(setting_set, "rpcs3_ios_setting_set");
 	RESOLVE(setting_reset, "rpcs3_ios_setting_reset");
 	RESOLVE(free_memory, "rpcs3_ios_free");
+	RESOLVE(boot_with, "rpcs3_ios_boot_with");
+	RESOLVE(create_llvm_cache, "rpcs3_ios_create_llvm_cache");
+	RESOLVE(game_data, "rpcs3_ios_game_data");
+	RESOLVE(game_remove, "rpcs3_ios_game_remove");
 #undef RESOLVE
 
 	g_loaded = true;
@@ -126,3 +134,12 @@ int core_setting_reset(const char* game, const char* path, char* error, size_t e
 }
 
 void core_free(void* pointer) { if (g_loaded && pointer) g_core.free_memory(pointer); }
+
+int core_boot_with(const char* path, const char* title_id, int mode, const char* config_file, const char* savestate)
+{
+	return g_loaded ? g_core.boot_with(path, title_id, mode, config_file, savestate) : -100;
+}
+
+int core_create_llvm_cache(const char* path, const char* title_id) { return g_loaded ? g_core.create_llvm_cache(path, title_id) : -100; }
+char* core_game_data(const char* title_id, const char* path) { return g_loaded ? g_core.game_data(title_id, path) : NULL; }
+int core_game_remove(const char* title_id, const char* what) { return g_loaded ? g_core.game_remove(title_id, what) : -100; }

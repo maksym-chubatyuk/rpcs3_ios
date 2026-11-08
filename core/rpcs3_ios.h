@@ -93,6 +93,26 @@ void rpcs3_ios_stop(void);
 // system_state: 0 stopped, 1 loading, 2 stopping, 3 running, 4 paused, 5 frozen, 6 ready, 7 starting.
 int rpcs3_ios_state(void);
 
+// Booting as RPCS3's desktop game menu offers it (core/games.cpp)
+enum
+{
+	RPCS3_IOS_BOOT_NORMAL = 0,      // the game's own settings if it has any, otherwise the global ones
+	RPCS3_IOS_BOOT_GLOBAL = 1,      // the global settings, even if the game has its own
+	RPCS3_IOS_BOOT_DEFAULT = 2,     // RPCS3's default settings
+	RPCS3_IOS_BOOT_CONFIG_FILE = 3, // a config file (config_file)
+};
+// savestate: a .SAVESTAT file to resume instead of starting the game (NULL or "" for none)
+int rpcs3_ios_boot_with(const char* path, const char* title_id, int mode, const char* config_file, const char* savestate);
+// Compiles the game's PPU modules without running it ("Create LLVM Cache"); the stop event follows
+int rpcs3_ios_create_llvm_cache(const char* path, const char* title_id);
+// What a game stores, as JSON (free with rpcs3_ios_free): {"customConfig", "customInput": bool,
+// "shaderCache", "ppuCache", "spuCache", "hdd1Cache", "saveData", "installedData", "savestatesSize": bytes,
+// "lastSavestate": path or "", "savestates": [{"path", "date", "size", "compatible"}]}
+char* rpcs3_ios_game_data(const char* title_id, const char* path);
+// Removes one of: "config", "input", "shaders", "ppu", "spu", "hdd1", "caches" (all four),
+// "savestates", "savedata", "installed" (updates and DLC on the virtual HDD). 0 on success.
+int rpcs3_ios_game_remove(const char* title_id, const char* what);
+
 // Settings (core/settings.cpp). game: NULL or "" for the global settings (config.yml), or a title ID
 // for that game's own settings, which RPCS3 applies over the global ones when it boots.
 // A setting's path is its names in the config tree, separated by '\n' ("Video\nVulkan\nAdapter").
