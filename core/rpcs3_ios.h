@@ -186,6 +186,22 @@ int rpcs3_ios_trophy_set_earned(const char* communication_id, int trophy_id, int
 // Removes a game's trophy data. While no game runs. 0 on success.
 int rpcs3_ios_trophy_game_remove(const char* communication_id);
 
+// RPCN, RPCS3's online service (core/rpcn.cpp), as desktop's RPCN dialog. Messages say what happened.
+// {"username", "hasPassword", "token", "host", "hosts": [{"name", "host"}]}, to free with rpcs3_ios_free.
+char* rpcs3_ios_rpcn(void);
+int rpcs3_ios_rpcn_set_host(const char* host);
+int rpcs3_ios_rpcn_add_host(const char* name, const char* host, char* message, size_t message_size);
+int rpcs3_ios_rpcn_remove_host(const char* name, const char* host);
+// An existing account. password: NULL or "" keeps the saved one. 0 on success.
+int rpcs3_ios_rpcn_set_account(const char* username, const char* password, const char* token, char* message, size_t message_size);
+// These reach the server and block: call them from a background thread. 0 on success, else -1.
+int rpcs3_ios_rpcn_create_account(const char* username, const char* password, const char* email, char* message, size_t message_size);
+int rpcs3_ios_rpcn_test(char* message, size_t message_size);
+int rpcs3_ios_rpcn_resend_token(char* message, size_t message_size);
+int rpcs3_ios_rpcn_send_reset_token(const char* username, const char* email, char* message, size_t message_size);
+int rpcs3_ios_rpcn_reset_password(const char* username, const char* token, const char* password, char* message, size_t message_size);
+int rpcs3_ios_rpcn_delete_account(char* message, size_t message_size);
+
 // Settings (core/settings.cpp). game: NULL or "" for the global settings (config.yml), or a title ID
 // for that game's own settings, which RPCS3 applies over the global ones when it boots.
 // A setting's path is its names in the config tree, separated by '\n' ("Video\nVulkan\nAdapter").

@@ -42,6 +42,11 @@ struct SettingsView: View {
                 } label: {
                     Label("Controls", systemImage: "gamecontroller")
                 }
+                NavigationLink {
+                    RPCNView()
+                } label: {
+                    Label("RPCN (Online)", systemImage: "network")
+                }
             }
         }
         Section {

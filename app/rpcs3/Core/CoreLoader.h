@@ -85,6 +85,19 @@ void core_cancel_install(void);
 int core_install_license(const char* path, char* message, size_t message_size);
 const char* core_hdd0_game_dir(void);
 
+// RPCN (see rpcs3_ios_rpcn in core/rpcs3_ios.h)
+char* core_rpcn(void);
+int core_rpcn_set_host(const char* host);
+int core_rpcn_add_host(const char* name, const char* host, char* message, size_t message_size);
+int core_rpcn_remove_host(const char* name, const char* host);
+int core_rpcn_set_account(const char* username, const char* password, const char* token, char* message, size_t message_size);
+int core_rpcn_create_account(const char* username, const char* password, const char* email, char* message, size_t message_size);
+int core_rpcn_test(char* message, size_t message_size);
+int core_rpcn_resend_token(char* message, size_t message_size);
+int core_rpcn_send_reset_token(const char* username, const char* email, char* message, size_t message_size);
+int core_rpcn_reset_password(const char* username, const char* token, const char* password, char* message, size_t message_size);
+int core_rpcn_delete_account(char* message, size_t message_size);
+
 #ifdef __cplusplus
 }
 #endif

@@ -82,6 +82,14 @@ Tick an item off when it works; note what went wrong otherwise.
 - [ ] Mark as Earned / Not Earned, and Remove Trophy Data.
 - [ ] The game page's Trophies link (for games with trophies).
 
+## RPCN (online)
+
+- [ ] Create an account (person icon › RPCN, or Settings › RPCN); the token arrives by email; enter it in Edit Account.
+- [ ] Test Account says it works; Use an Existing Account with a desktop RPCS3 account works too.
+- [ ] Play Online with RPCN, then a game that plays online connects (RPCN popups appear if turned on).
+- [ ] Send the Token Again, Change Password (reset token by email), Delete Account.
+- [ ] Add Server…, switch servers, remove a server.
+
 ## General
 
 - [ ] Dark mode, larger text sizes, and VoiceOver on the main screens.

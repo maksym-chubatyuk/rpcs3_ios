@@ -42,10 +42,6 @@ enum SettingsPolicy {
         ["Input/Output", "Emulated Midi devices"]: "Needs MIDI instruments connected to a computer.",
         ["Input/Output", "Background input enabled"]: "iOS apps get no input in the background, and games pause there.",
 
-        // Network
-        ["Net", "Clans Enabled"]: "Needs an RPCN account, which cannot be set up in the app yet.",
-        ["Miscellaneous", "Show RPCN popups"]: "Needs an RPCN account, which cannot be set up in the app yet.",
-
         // Emulator (desktop window and game list)
         ["Miscellaneous", "Exit RPCS3 when process finishes"]: "iOS apps do not quit themselves.",
         ["Miscellaneous", "Pause emulation on RPCS3 focus loss"]: "Games always pause when the app leaves the screen.",
@@ -75,7 +71,6 @@ enum SettingsPolicy {
             "Mouse": "Needs a mouse.",
             "Raw Mouse": "Needs a mouse.",
         ],
-        ["Net", "PSN status"]: ["RPCN": "Needs an RPCN account, which cannot be set up in the app yet."],
     ]
 
     /// Settings desktop edits in other dialogs, placed where they belong: (tab, group, label).

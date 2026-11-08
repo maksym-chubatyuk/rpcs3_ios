@@ -26,7 +26,7 @@ struct ContentView: View {
 
     /// The console's data: its users, and the logged-in user's saves and trophies.
     enum Manager: String, Identifiable {
-        case saves, trophies, users
+        case saves, trophies, users, rpcn
         var id: Self { self }
     }
 
@@ -76,6 +76,7 @@ struct ContentView: View {
                                 Button("Save Data", systemImage: "externaldrive") { managing = .saves }
                                 Button("Trophies", systemImage: "trophy") { managing = .trophies }
                                 Button("Users", systemImage: "person.2") { managing = .users }
+                                Button("RPCN (Online)", systemImage: "network") { managing = .rpcn }
                             }
                         } label: {
                             Label("User", systemImage: "person.crop.circle")
@@ -150,6 +151,7 @@ struct ContentView: View {
                     case .saves: SaveDataView()
                     case .trophies: TrophyGamesView()
                     case .users: UsersView()
+                    case .rpcn: RPCNView()
                     }
                 }
                 .toolbar {

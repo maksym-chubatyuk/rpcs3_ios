@@ -126,6 +126,10 @@ and trophies. `core/userdata.cpp` mirrors desktop's user, save data and trophy m
 drive as desktop does, together with licences (.rap) and .edat files for the logged-in user; games
 installed this way are in the library and can be uninstalled there (`core/packages.cpp`).
 
+**RPCN**, RPCS3's online service, is set up under the person icon or in Settings: creating an
+account, an existing account's details, the email token, the password and the server, and the
+switch that takes games online (`core/rpcn.cpp`, as desktop's RPCN dialog).
+
 What still has to be checked by hand on a phone is listed in [TESTING.md](TESTING.md).
 
 ## Updating RPCS3

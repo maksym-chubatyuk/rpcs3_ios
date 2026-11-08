@@ -351,6 +351,46 @@ final class Emulator {
                 log("packages test: earned trophies \(earned.map { "\($0.name) at \($0.earnedDate?.description ?? "none")" })")
             }
         }
+        // RPCS3_RPCN_TEST=1: the account file, input checks, the online switch, and one sign-in with a made-up
+        // account (the server should refuse it); rpcn.yml and the network settings are put back afterwards
+        if env["RPCS3_RPCN_TEST"] != nil {
+            let account = RPCNAccount.load()
+            log("rpcn test: username '\(account?.username ?? "?")', password \(account?.hasPassword ?? false), host \(account?.host ?? "?"), hosts \(account?.hosts.map(\.name) ?? [])")
+            let badEmail = CoreCall.message { core_rpcn_create_account("iosprobe00", "secret", "not-an-email", $0, $1) }
+            let badName = CoreCall.message { core_rpcn_set_account("x", "secret", "", $0, $1) }
+            let badToken = CoreCall.message { core_rpcn_set_account("iosprobe00", "secret", "nothex", $0, $1) }
+            log("rpcn test: bad email -> \(badEmail ?? "accepted!"); bad name -> \(badName ?? "accepted!"); bad token -> \(badToken ?? "accepted!")")
+
+            let store = RPCNStore()
+            let settings = SettingsStore(gameID: nil, gameTitle: nil)
+            let internet = settings.setting(["Net", "Internet enabled"])?.value ?? "Disconnected"
+            let psn = settings.setting(["Net", "PSN status"])?.value ?? "Disconnected"
+            let before = store.isOnline
+            store.setOnline(true)
+            let on = store.isOnline
+            store.setOnline(false)
+            log("rpcn test: online \(before) -> on \(on) -> off \(store.isOnline)")
+            if let entry = settings.setting(["Net", "Internet enabled"]) { settings.set(entry, to: internet) }
+            if let entry = settings.setting(["Net", "PSN status"]) { settings.set(entry, to: psn) }
+
+            let emu = URL(fileURLWithPath: String(cString: core_emulator_dir()))
+            let file = [emu.appending(path: "config/rpcn.yml"), emu.appending(path: "rpcn.yml")]
+                .first { FileManager.default.fileExists(atPath: $0.path) } ?? emu.appending(path: "config/rpcn.yml")
+            let saved = try? Data(contentsOf: file)
+            let set = CoreCall.message { core_rpcn_set_account("iosprobe00", "not-the-password", "", $0, $1) }
+            log("rpcn test: made-up account -> \(set ?? "saved"), file \(file.path)")
+            Thread.detachNewThread {
+                var buffer = [CChar](repeating: 0, count: 1024)
+                let code = core_rpcn_test(&buffer, buffer.count)
+                let answer = String(cString: buffer)
+                if let saved { try? saved.write(to: file) } else { try? FileManager.default.removeItem(at: file) }
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        self.log("rpcn test: sign-in -> \(code) '\(answer)'; restored, username now '\(RPCNAccount.load()?.username ?? "?")'")
+                    }
+                }
+            }
+        }
         // RPCS3_REMOVE_DATA=<item>: removes that item (GameData) of the first game, then reports what is left
         if let item = env["RPCS3_REMOVE_DATA"], let game = games.first, let before = gameData(game) {
             let ok = removeData(item, of: game)

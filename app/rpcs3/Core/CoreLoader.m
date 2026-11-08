@@ -53,6 +53,17 @@ static struct
 	void (*cancel_install)(void);
 	int (*install_license)(const char*, char*, size_t);
 	const char* (*hdd0_game_dir)(void);
+	char* (*rpcn)(void);
+	int (*rpcn_set_host)(const char*);
+	int (*rpcn_add_host)(const char*, const char*, char*, size_t);
+	int (*rpcn_remove_host)(const char*, const char*);
+	int (*rpcn_set_account)(const char*, const char*, const char*, char*, size_t);
+	int (*rpcn_create_account)(const char*, const char*, const char*, char*, size_t);
+	int (*rpcn_test)(char*, size_t);
+	int (*rpcn_resend_token)(char*, size_t);
+	int (*rpcn_send_reset_token)(const char*, const char*, char*, size_t);
+	int (*rpcn_reset_password)(const char*, const char*, const char*, char*, size_t);
+	int (*rpcn_delete_account)(char*, size_t);
 } g_core;
 
 static bool g_loaded;
@@ -137,6 +148,17 @@ bool core_load(char* error, size_t error_size)
 	RESOLVE(cancel_install, "rpcs3_ios_cancel_install");
 	RESOLVE(install_license, "rpcs3_ios_install_license");
 	RESOLVE(hdd0_game_dir, "rpcs3_ios_hdd0_game_dir");
+	RESOLVE(rpcn, "rpcs3_ios_rpcn");
+	RESOLVE(rpcn_set_host, "rpcs3_ios_rpcn_set_host");
+	RESOLVE(rpcn_add_host, "rpcs3_ios_rpcn_add_host");
+	RESOLVE(rpcn_remove_host, "rpcs3_ios_rpcn_remove_host");
+	RESOLVE(rpcn_set_account, "rpcs3_ios_rpcn_set_account");
+	RESOLVE(rpcn_create_account, "rpcs3_ios_rpcn_create_account");
+	RESOLVE(rpcn_test, "rpcs3_ios_rpcn_test");
+	RESOLVE(rpcn_resend_token, "rpcs3_ios_rpcn_resend_token");
+	RESOLVE(rpcn_send_reset_token, "rpcs3_ios_rpcn_send_reset_token");
+	RESOLVE(rpcn_reset_password, "rpcs3_ios_rpcn_reset_password");
+	RESOLVE(rpcn_delete_account, "rpcs3_ios_rpcn_delete_account");
 #undef RESOLVE
 
 	g_loaded = true;
@@ -237,3 +259,14 @@ int core_install_packages(const char* paths, void (*progress)(void*, uint32_t, u
 void core_cancel_install(void) { if (g_loaded) g_core.cancel_install(); }
 int core_install_license(const char* path, char* message, size_t message_size) { return g_loaded ? g_core.install_license(path, message, message_size) : -100; }
 const char* core_hdd0_game_dir(void) { return g_loaded ? g_core.hdd0_game_dir() : ""; }
+char* core_rpcn(void) { return g_loaded ? g_core.rpcn() : NULL; }
+int core_rpcn_set_host(const char* host) { return g_loaded ? g_core.rpcn_set_host(host) : -100; }
+int core_rpcn_add_host(const char* name, const char* host, char* message, size_t message_size) { return g_loaded ? g_core.rpcn_add_host(name, host, message, message_size) : -100; }
+int core_rpcn_remove_host(const char* name, const char* host) { return g_loaded ? g_core.rpcn_remove_host(name, host) : -100; }
+int core_rpcn_set_account(const char* username, const char* password, const char* token, char* message, size_t message_size) { return g_loaded ? g_core.rpcn_set_account(username, password, token, message, message_size) : -100; }
+int core_rpcn_create_account(const char* username, const char* password, const char* email, char* message, size_t message_size) { return g_loaded ? g_core.rpcn_create_account(username, password, email, message, message_size) : -100; }
+int core_rpcn_test(char* message, size_t message_size) { return g_loaded ? g_core.rpcn_test(message, message_size) : -100; }
+int core_rpcn_resend_token(char* message, size_t message_size) { return g_loaded ? g_core.rpcn_resend_token(message, message_size) : -100; }
+int core_rpcn_send_reset_token(const char* username, const char* email, char* message, size_t message_size) { return g_loaded ? g_core.rpcn_send_reset_token(username, email, message, message_size) : -100; }
+int core_rpcn_reset_password(const char* username, const char* token, const char* password, char* message, size_t message_size) { return g_loaded ? g_core.rpcn_reset_password(username, token, password, message, message_size) : -100; }
+int core_rpcn_delete_account(char* message, size_t message_size) { return g_loaded ? g_core.rpcn_delete_account(message, message_size) : -100; }
