@@ -39,6 +39,8 @@ void core_pause(void);
 void core_resume(void);
 void core_stop(void);
 int core_state(void);
+int core_save_state(void);
+int core_load_state(int index);
 
 // Settings (see rpcs3_ios_settings in core/rpcs3_ios.h). core_settings returns JSON to release with core_free.
 char* core_settings(const char* game);

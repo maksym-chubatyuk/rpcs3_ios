@@ -42,10 +42,11 @@ Tick an item off when it works; note what went wrong otherwise.
 - [ ] The screen stays in landscape in a game and the touch controls work.
 - [ ] Leaving the app pauses the game; coming back resumes it.
 - [ ] The PS button opens RPCS3's home menu; quitting from it closes the game screen.
-- [ ] Saving in a game: its save dialog lists and creates saves (the fix for the save dialog is untested).
+- [ ] Saving in a game: RPCS3's save list appears (it never did before 2026-11-08: every save was cancelled); a new save and overwriting one work; loading it after restarting the game.
 - [ ] A trophy popup appears when one is earned.
 - [ ] Play with Global Settings, Play with Default Settings, Play with a config file from Files.
-- [ ] Savestates: make one in the home menu, then Resume Latest Savestate and the savestate list on the game page.
+- [ ] Savestates (save and reload were tested on the device through SAVESTATE_TEST): Home menu › Savestate › Save keeps the game going on the same screen; Reload Savestate goes back to it; Resume Latest Savestate and the savestate list on the game page.
+- [ ] Home menu › Restart keeps the game screen and starts the game again.
 
 ## Game page
 

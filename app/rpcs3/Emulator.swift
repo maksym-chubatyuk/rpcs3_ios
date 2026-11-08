@@ -217,9 +217,28 @@ final class Emulator {
         log("core ready, emulator dir \(String(cString: core_emulator_dir())), firmware '\(firmwareVersion)', logs in \(String(cString: core_log_dir())) (RPCS3.log \(FileManager.default.fileExists(atPath: String(cString: core_log_dir()) + "RPCS3.log")))")
     }
 
+    /// Counts restarts, so a restart's fallback knows whether a newer one came since
+    private var restarts = 0
+
     fileprivate func handle(event: Int32) {
+        if savestateTestRunning { log("savestate test: event \(event), state \(core_state())") }
         switch event {
         case 2, 4: isRunning = true      // run, resume
+        case 7:
+            // Stopped to boot again in the same game screen (a savestate saved or reloaded, a home
+            // menu restart): the game stays "running" and keeps its access to the game's files.
+            // Should the new boot not start, it counts as a stop after all.
+            restarts += 1
+            let restart = restarts
+            log("emulation restarting")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
+                MainActor.assumeIsolated {
+                    if self.restarts == restart, core_state() == 0 {
+                        self.log("the restart did not boot; stopping")
+                        self.handle(event: 5)
+                    }
+                }
+            }
         case 5:  // stop
             isRunning = false
             releaseGameAccess()
@@ -452,6 +471,11 @@ final class Emulator {
             autoBoot = BootRequest(game: game, buildsPPUCache: true)
         }
         let bootName = env["RPCS3_AUTO_BOOT"]
+        // RPCS3_SAVESTATE_TEST=<seconds> (with AUTO_BOOT): that long into the game, saves a savestate as
+        // the home menu does, then after as long again reloads the newest one; the steps go to the log
+        if let seconds = Double(env["RPCS3_SAVESTATE_TEST"] ?? ""), bootName != nil {
+            savestateTest(after: seconds)
+        }
 
         let bootIfAsked = { [self] in
             guard let name = bootName, !name.isEmpty else { return }
@@ -642,6 +666,38 @@ final class Emulator {
         core_stop()
         isRunning = false
         releaseGameAccess()
+    }
+
+    private var savestateTestRunning = false
+
+    private func savestateTest(after seconds: Double) {
+        savestateTestRunning = true
+        Task {
+            func waitRunning(_ label: String) async -> Bool {
+                for _ in 0..<240 where !(isRunning && core_state() == 3) { try? await Task.sleep(for: .milliseconds(500)) }
+                log("savestate test: \(label): running \(isRunning), state \(core_state())")
+                return isRunning && core_state() == 3
+            }
+            func states() -> String {
+                guard let game = games.first(where: { $0.url.lastPathComponent == ProcessInfo.processInfo.environment["RPCS3_AUTO_BOOT"] }),
+                      let data = gameData(game) else { return "?" }
+                return "\(data.savestates.count) savestates, latest '\((data.lastSavestate as NSString).lastPathComponent)'"
+            }
+            guard await waitRunning("booted") else { return }
+            log("savestate test: before saving: \(states())")
+            try? await Task.sleep(for: .seconds(seconds))
+            log("savestate test: saving -> \(core_save_state())")
+            try? await Task.sleep(for: .seconds(2))
+            _ = await waitRunning("after saving")
+            log("savestate test: after saving: \(states())")
+            try? await Task.sleep(for: .seconds(seconds))
+            log("savestate test: reloading the newest -> \(core_load_state(1))")
+            try? await Task.sleep(for: .seconds(2))
+            _ = await waitRunning("after reloading")
+            try? await Task.sleep(for: .seconds(seconds))
+            log("savestate test: done, running \(isRunning), state \(core_state())")
+            savestateTestRunning = false
+        }
     }
 
     private func releaseGameAccess() {

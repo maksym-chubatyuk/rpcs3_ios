@@ -45,6 +45,9 @@
 #include "Emu/Cell/Modules/sceNpTrophy.h"
 #include "Emu/RSX/Overlays/overlay_manager.h"
 #include "Emu/RSX/Overlays/overlay_trophy_notification.h"
+#include "Emu/RSX/Overlays/overlay_save_dialog.h"
+#include "Emu/Cell/Modules/cellSysutil.h"
+#include "Emu/savestate_utils.hpp"
 #include "util/video_source.h"
 #include "Input/pad_thread.h"
 #include "Emu/Cell/PPUThread.h"
@@ -72,6 +75,8 @@
 #include <vulkan/vulkan.h>
 
 #include <clocale>
+#include <deque>
+#include <mutex>
 #include <cstdio>
 
 LOG_CHANNEL(ios_log, "iOS");
@@ -130,6 +135,44 @@ namespace
 			}
 
 			return 0;
+		}
+	};
+
+	// The save data list a game shows to save or load (cellSaveData's list and fixed modes), through
+	// RPCS3's own overlay as its desktop frontend draws it. Without one, every save and load is
+	// cancelled before the game sees a list.
+	class ios_save_dialog final : public SaveDialogBase
+	{
+	public:
+		s32 ShowSaveDataList(const std::string& base_dir, std::vector<SaveDataEntry>& save_entries, s32 focused, u32 op, vm::ptr<CellSaveDataListSet> listSet, bool enable_overlay) override
+		{
+			ios_log.notice("Save data list: %d entries, focused %d, operation 0x%x", save_entries.size(), focused, op);
+
+			const bool use_end = sysutil_send_system_cmd(CELL_SYSUTIL_DRAWING_BEGIN, 0) >= 0;
+			s32 result = -2; // cancelled
+
+			if (auto manager = g_fxo->try_get<rsx::overlays::display_manager>())
+			{
+				result = manager->create<rsx::overlays::save_dialog>()->show(base_dir, save_entries, focused, op, listSet, enable_overlay);
+
+				if (result == rsx::overlays::user_interface::selection_code::error)
+				{
+					ios_log.error("Save data list: the overlay failed");
+					result = -2;
+				}
+			}
+			else
+			{
+				ios_log.error("Save data list: no overlay manager");
+			}
+
+			if (use_end)
+			{
+				sysutil_send_system_cmd(CELL_SYSUTIL_DRAWING_END, 0);
+			}
+
+			ios_log.notice("Save data list: selection %d", result);
+			return result;
 		}
 	};
 
@@ -215,10 +258,40 @@ namespace
 		void update_title(double) override {}
 	};
 
+	// Work RPCS3 posts to the main thread, in order. Kept here rather than only in GCD's main queue
+	// so that a wait on the main thread (qt_events_aware_op, e.g. GracefulShutdown when reloading a
+	// savestate) can run it, as desktop's Qt event loop does: stopping the emulator posts work to the
+	// main thread, and a main-queue block cannot run while the waiting one has not returned.
+	std::mutex g_main_mutex;
+	std::deque<std::function<void()>> g_main_queue;
+
+	void drain_main_queue()
+	{
+		while (true)
+		{
+			std::function<void()> task;
+			{
+				std::lock_guard lock(g_main_mutex);
+
+				if (g_main_queue.empty())
+				{
+					return;
+				}
+
+				task = std::move(g_main_queue.front());
+				g_main_queue.pop_front();
+			}
+
+			task();
+		}
+	}
+
 	void run_on_main_thread(std::function<void()> func, atomic_t<u32>* wake_up)
 	{
-		auto done = [wake_up]()
+		auto task = [func = std::move(func), wake_up]()
 		{
+			func();
+
 			if (wake_up)
 			{
 				*wake_up = true;
@@ -228,17 +301,16 @@ namespace
 
 		if ([NSThread isMainThread])
 		{
-			func();
-			done();
+			task();
 			return;
 		}
 
-		auto* task = new std::function<void()>([func = std::move(func), done]() { func(); done(); });
+		{
+			std::lock_guard lock(g_main_mutex);
+			g_main_queue.push_back(std::move(task));
+		}
 
-		dispatch_async(dispatch_get_main_queue(), ^{
-			(*task)();
-			delete task;
-		});
+		dispatch_async(dispatch_get_main_queue(), ^{ drain_main_queue(); });
 	}
 
 	std::string localized_string(localized_string_id id, const char* arg)
@@ -383,7 +455,9 @@ namespace
 		cb.on_run = [](bool) { notify(RPCS3_IOS_EVENT_RUN); };
 		cb.on_pause = []() { notify(RPCS3_IOS_EVENT_PAUSE); };
 		cb.on_resume = []() { notify(RPCS3_IOS_EVENT_RESUME); };
-		cb.on_stop = []() { notify(RPCS3_IOS_EVENT_STOP); };
+		// A stop in continuous mode boots again right away (savestate, reload, home menu restart):
+		// the app keeps its game screen for it
+		cb.on_stop = []() { notify(Emu.ContinuousModeEnabled(false) ? RPCS3_IOS_EVENT_RESTART : RPCS3_IOS_EVENT_STOP); };
 		cb.on_ready = []() { notify(RPCS3_IOS_EVENT_READY); };
 		cb.on_missing_fw = []() { notify(RPCS3_IOS_EVENT_MISSING_FIRMWARE); };
 
@@ -445,7 +519,16 @@ namespace
 		};
 
 		cb.close_gs_frame = []() {};
-		cb.get_gs_frame = []() -> std::unique_ptr<GSFrameBase> { return std::make_unique<ios_gs_frame>(); };
+		cb.get_gs_frame = []() -> std::unique_ptr<GSFrameBase>
+		{
+			// Continuous mode is for one boot only; desktop resets it here too (gui_application::get_gs_frame)
+			if (Emu.ContinuousModeEnabled(true))
+			{
+				ios_log.notice("Booting again in the same game screen");
+			}
+
+			return std::make_unique<ios_gs_frame>();
+		};
 		cb.replace_gs_frame = []() -> std::unique_ptr<GSFrameBase> { return std::make_unique<ios_gs_frame>(); };
 		cb.init_gs_render = [](utils::serial* ar)
 		{
@@ -502,10 +585,11 @@ namespace
 			}
 		};
 
-		// Dialogs: none yet (games see the "no dialog" path, as in headless mode)
+		// Dialogs: message dialogs and the keyboard use RPCS3's overlays by themselves when these
+		// return nothing; the save data list asks for its dialog, which draws the overlay
 		cb.get_msg_dialog = []() -> std::shared_ptr<MsgDialogBase> { return nullptr; };
 		cb.get_osk_dialog = []() -> std::shared_ptr<OskDialogBase> { return nullptr; };
-		cb.get_save_dialog = []() -> std::unique_ptr<SaveDialogBase> { return nullptr; };
+		cb.get_save_dialog = []() -> std::unique_ptr<SaveDialogBase> { return std::make_unique<ios_save_dialog>(); };
 		cb.get_sendmessage_dialog = []() -> std::shared_ptr<SendMessageDialogBase> { return nullptr; };
 		cb.get_recvmessage_dialog = []() -> std::shared_ptr<RecvMessageDialogBase> { return nullptr; };
 		cb.get_trophy_notification_dialog = []() -> std::unique_ptr<TrophyNotificationBase> { return std::make_unique<ios_trophy_notification>(); };
@@ -698,9 +782,16 @@ cfg_input_configurations g_cfg_input_configs;
 
 void qt_events_aware_op(int repeat_duration_ms, std::function<bool()> wrapped_op)
 {
-	// No Qt event loop to keep alive: just poll
+	// On the main thread, run what is posted to it meanwhile, as desktop's Qt event loop does
+	const bool main = [NSThread isMainThread];
+
 	while (!wrapped_op())
 	{
+		if (main)
+		{
+			drain_main_queue();
+		}
+
 		std::this_thread::sleep_for(std::chrono::milliseconds(std::max(repeat_duration_ms, 1)));
 	}
 }
@@ -808,6 +899,41 @@ extern "C" int rpcs3_ios_initialize(rpcs3_ios_event_fn events)
 
 	// The global config: what iOS needs, saved, as booting a game reloads it from disk
 	bool fixed = apply_ios_requirements(g_cfg);
+
+	// iOS defaults, set once (v2: also in games' own configs); the settings can change them afterwards. SPU Compatible Savestates
+	// Mode: without it many games refuse every savestate ("failed to lock SPU threads execution"),
+	// and on a phone, where iOS ends apps in the background, savestates are worth the slight SPU
+	// cost RPCS3 notes for it
+	if (const std::string marker = fs::get_config_dir() + "ios_defaults_v2"; !fs::is_file(marker))
+	{
+		if (!g_cfg.savestate.compatible_mode)
+		{
+			g_cfg.savestate.compatible_mode.set(true);
+			fixed = true;
+			ios_log.notice("Turned on SPU Compatible Savestates Mode (iOS default)");
+		}
+
+		// Games' own configs saved from the home menu are full copies of every setting, so they
+		// hold the old value without anyone having chosen it
+		for (const auto& entry : fs::dir(rpcs3::utils::get_custom_config_dir()))
+		{
+			const std::string path = rpcs3::utils::get_custom_config_dir() + entry.name;
+
+			if (entry.is_directory || !entry.name.ends_with(".yml"))
+			{
+				continue;
+			}
+
+			if (std::string text = fs::file(path).to_string(); text.find("  Compatible Savestate Mode: false\n") != umax)
+			{
+				text.replace(text.find("  Compatible Savestate Mode: false\n"), 35, "  Compatible Savestate Mode: true\n");
+				fs::write_file(path, fs::rewrite, text);
+				ios_log.notice("Turned on SPU Compatible Savestates Mode in %s (iOS default)", entry.name);
+			}
+		}
+
+		fs::write_file(marker, fs::rewrite, std::string("1"));
+	}
 
 	// Test hook (scripts/run.sh PERF_OVERLAY=1): RPCS3's performance overlay, saved in the config
 	if (const char* overlay = std::getenv("RPCS3_PERF_OVERLAY"); overlay && g_cfg.video.perf_overlay.enabled.get() != (overlay[0] == '1'))
@@ -1105,6 +1231,41 @@ extern "C" void rpcs3_ios_resume(void)
 extern "C" void rpcs3_ios_stop(void)
 {
 	Emu.GracefulShutdown(false, true);
+}
+
+extern "C" int rpcs3_ios_save_state(void)
+{
+	if (!Emu.IsRunning() && !Emu.IsPaused())
+	{
+		return 0;
+	}
+
+	// What the home menu's "Save State" does (overlay_home_menu_savestate.cpp)
+	Emu.CallFromMainThread([]()
+	{
+		ios_log.notice("Saving a savestate");
+
+		if (!g_cfg.savestate.suspend_emu)
+		{
+			Emu.after_kill_callback = []() { Emu.Restart(true, false); };
+			Emu.SetContinuousMode(true);
+		}
+
+		Emu.Kill(false, true);
+	});
+
+	return 1;
+}
+
+extern "C" int rpcs3_ios_load_state(int index)
+{
+	if (index < 1 || !boot_current_game_savestate(true, static_cast<u32>(index)))
+	{
+		return 0;
+	}
+
+	Emu.CallFromMainThread([index]() { boot_current_game_savestate(false, static_cast<u32>(index)); });
+	return 1;
 }
 
 extern "C" int rpcs3_ios_state(void)

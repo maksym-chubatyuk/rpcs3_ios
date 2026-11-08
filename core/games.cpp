@@ -234,11 +234,12 @@ extern "C" char* rpcs3_ios_game_data(const char* title_id, const char* path)
 	std::string savestates = "[";
 	{
 		std::vector<std::pair<s64, std::string>> files;
-		const std::string dir = rpcs3::utils::get_savestates_dir(serial);
+		const std::string dir = rpcs3::utils::get_savestates_dir(serial) + "/";
 
 		for (const auto& entry : fs::dir(dir))
 		{
-			if (!entry.is_directory && entry.name.ends_with(".SAVESTAT"))
+			// RPCS3 compresses them (.SAVESTAT.zst; .gz from older versions)
+			if (!entry.is_directory && (entry.name.ends_with(".SAVESTAT") || entry.name.ends_with(".SAVESTAT.zst") || entry.name.ends_with(".SAVESTAT.gz")))
 				files.emplace_back(entry.mtime, dir + entry.name);
 		}
 

@@ -27,6 +27,9 @@ enum rpcs3_ios_event
 	RPCS3_IOS_EVENT_RESUME = 4,
 	RPCS3_IOS_EVENT_STOP = 5,
 	RPCS3_IOS_EVENT_MISSING_FIRMWARE = 6,
+	// Stopped only to boot again in the same game screen: after a savestate is saved (and the game
+	// resumed from it), a savestate reloaded, or a restart from RPCS3's home menu. RUN follows.
+	RPCS3_IOS_EVENT_RESTART = 7,
 };
 
 // 1 if the core found a usable JIT pool. Nothing else works without one.
@@ -109,6 +112,11 @@ int rpcs3_ios_boot(const char* path);
 void rpcs3_ios_pause(void);
 void rpcs3_ios_resume(void);
 void rpcs3_ios_stop(void);
+
+// Savestates, as RPCS3's home menu makes them. Save: the game continues from the new state
+// (or stops, if "Suspend Emulation" mode is set). Load: index 1 is the newest savestate. 0 if not possible.
+int rpcs3_ios_save_state(void);
+int rpcs3_ios_load_state(int index);
 
 // system_state: 0 stopped, 1 loading, 2 stopping, 3 running, 4 paused, 5 frozen, 6 ready, 7 starting.
 int rpcs3_ios_state(void);

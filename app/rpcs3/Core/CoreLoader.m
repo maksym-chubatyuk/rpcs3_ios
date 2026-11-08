@@ -20,6 +20,8 @@ static struct
 	void (*resume)(void);
 	void (*stop)(void);
 	int (*state)(void);
+	int (*save_state)(void);
+	int (*load_state)(int);
 	char* (*settings)(const char*);
 	int (*setting_set)(const char*, const char*, const char*, char*, size_t);
 	int (*setting_reset)(const char*, const char*, char*, size_t);
@@ -116,6 +118,8 @@ bool core_load(char* error, size_t error_size)
 	RESOLVE(resume, "rpcs3_ios_resume");
 	RESOLVE(stop, "rpcs3_ios_stop");
 	RESOLVE(state, "rpcs3_ios_state");
+	RESOLVE(save_state, "rpcs3_ios_save_state");
+	RESOLVE(load_state, "rpcs3_ios_load_state");
 	RESOLVE(settings, "rpcs3_ios_settings");
 	RESOLVE(setting_set, "rpcs3_ios_setting_set");
 	RESOLVE(setting_reset, "rpcs3_ios_setting_reset");
@@ -194,6 +198,8 @@ void core_pause(void) { if (g_loaded) g_core.pause(); }
 void core_resume(void) { if (g_loaded) g_core.resume(); }
 void core_stop(void) { if (g_loaded) g_core.stop(); }
 int core_state(void) { return g_loaded ? g_core.state() : 0; }
+int core_save_state(void) { return g_loaded ? g_core.save_state() : 0; }
+int core_load_state(int index) { return g_loaded ? g_core.load_state(index) : 0; }
 
 char* core_settings(const char* game) { return g_loaded ? g_core.settings(game) : NULL; }
 
